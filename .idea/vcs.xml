@@ -3,6 +3,6 @@
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/DefaultModule" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/VolumeMixer" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/Docklys.VolumeMixer" vcs="Git" />
   </component>
 </project>

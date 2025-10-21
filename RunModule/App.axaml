@@ -5,15 +5,15 @@
              RequestedThemeVariant="Default">
              <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
              <Application.Resources>
-                 <SolidColorBrush x:Key="ColorBackground" Color="#d1dbd2"/>
-                 <SolidColorBrush x:Key="ColorModuleBackground" Color="#afb5af"/>
+                 <SolidColorBrush x:Key="ColorBackground" Color="#2a3a3a"/>
+                 <SolidColorBrush x:Key="ColorModuleBackground" Color="#2a3a3a"/>
                  <SolidColorBrush x:Key="ColorModuleBorder" Color="Transparent"/>
                  <SolidColorBrush x:Key="ColorBlack" Color="#2a3a3a"/>
                  <SolidColorBrush x:Key="ColorFont" Color="#4b5a52"/>
                  <SolidColorBrush x:Key="ColorAccent" Color="#202723"/>
                  <SolidColorBrush x:Key="ColorGray" Color="#586960"/>
                  <Color x:Key="ColorModuleAccentColor">White</Color>
-                 <SolidColorBrush x:Key="ColorModuleColor" Color="#9daea4"/>
+                 <SolidColorBrush x:Key="ColorModuleColor" Color="#363737"/>
                  
              </Application.Resources>
     <Application.Styles>

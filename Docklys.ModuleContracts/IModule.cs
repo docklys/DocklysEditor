@@ -4,6 +4,9 @@
     {
         string ModuleName { get; }
         string ModuleVersion { get; }
+        string UniqueModuleId { get; }
+        void SetModuleId(string uniqueModuleId);
+        void PrintModuleId();
         
         int PreferredTileWidth => 1;
         int PreferredTileHeight => 1;

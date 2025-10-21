@@ -26,7 +26,7 @@
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\DefaultModule\DefaultModule.csproj" />
-        <ProjectReference Include="..\VolumeMixer\VolumeMixer.csproj" />
         <ProjectReference Include="..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj" />
+        <ProjectReference Include="..\Docklys.VolumeMixer\VolumeMixer.csproj" />
     </ItemGroup>
 </Project>

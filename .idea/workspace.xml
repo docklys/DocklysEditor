@@ -5,9 +5,14 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="b78fc96d-226b-4724-a21b-44efa3282db3" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/DefaultModule/DefaultModule.axaml" beforeDir="false" afterPath="$PROJECT_DIR$/DefaultModule/DefaultModule.axaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/DefaultModule/DefaultModule.axaml.cs" beforeDir="false" afterPath="$PROJECT_DIR$/DefaultModule/DefaultModule.axaml.cs" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/DefaultModule/DefaultModule.csproj" beforeDir="false" afterPath="$PROJECT_DIR$/DefaultModule/DefaultModule.csproj" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/.idea.DefaultModule/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/.idea.DefaultModule/.idea/vcs.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/DefaultModule.sln" beforeDir="false" afterPath="$PROJECT_DIR$/DefaultModule.sln" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/Docklys.VolumeMixer/VolumeMixer.axaml.cs" beforeDir="false" afterPath="$PROJECT_DIR$/Docklys.VolumeMixer/VolumeMixer.axaml.cs" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/OutputModuleDLL/DefaultModule.dll" beforeDir="false" afterPath="$PROJECT_DIR$/OutputModuleDLL/DefaultModule.dll" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/OutputModuleDLL/VolumeMixer.dll" beforeDir="false" afterPath="$PROJECT_DIR$/OutputModuleDLL/VolumeMixer.dll" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/RunModule/App.axaml" beforeDir="false" afterPath="$PROJECT_DIR$/RunModule/App.axaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/RunModule/RunModule.csproj" beforeDir="false" afterPath="$PROJECT_DIR$/RunModule/RunModule.csproj" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -25,7 +30,7 @@
     </option>
   </component>
   <component name="Git.Settings">
-    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/VolumeMixer" />
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$/Docklys.VolumeMixer" />
   </component>
   <component name="HighlightingSettingsPerFile">
     <setting file="file://$PROJECT_DIR$/DefaultModule/DefaultModule.axaml.cs" root0="SKIP_HIGHLIGHTING" />
@@ -46,8 +51,9 @@
     ".NET Executable.Unnamed.executor": "Run",
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "master",
-    "last_opened_file_path": "C:/Projects/DocklyModules/DocklyModuleEditor",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "C:/Users/LeviZ/Projects/Docklys/DocklysEditor",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -67,6 +73,8 @@
       <workItem from="1751553229749" duration="528000" />
       <workItem from="1751553780286" duration="1264000" />
       <workItem from="1751667191895" duration="1311000" />
+      <workItem from="1761012573233" duration="19000" />
+      <workItem from="1761012681519" duration="33000" />
     </task>
     <servers />
   </component>
