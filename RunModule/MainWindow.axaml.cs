@@ -100,7 +100,10 @@ public partial class MainWindow : Window
         var control = this.FindControl<Control>("ModuleControl");
         if (control == null) return;
 
-        // Capture at 100% scale without moving the visible module permanently.
+            // Capture at 100% scale without moving the visible module permanently.
+            // Supersampling scale: increase to render at higher resolution for much better saved image quality.
+            // Typical values: 2 or 4. 4 gives much sharper results but uses more memory.
+            const int captureScale = 4; // change to 2 or 1 if you need smaller files
         var originalBounds = control.Bounds;
         var originalTransform = control.RenderTransform;
         var originalTransformOrigin = control.RenderTransformOrigin;
@@ -114,8 +117,9 @@ public partial class MainWindow : Window
             // Measure for desired size and create bitmap accordingly (capture full module content at 100%)
             control.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             var desired = control.DesiredSize;
-            var size = new PixelSize(Math.Max(1, (int)Math.Ceiling(desired.Width)), Math.Max(1, (int)Math.Ceiling(desired.Height)));
-            var dpi = new Vector(96, 96);
+            // Multiply desired size and DPI by captureScale to supersample the render.
+            var size = new PixelSize(Math.Max(1, (int)Math.Ceiling(desired.Width * captureScale)), Math.Max(1, (int)Math.Ceiling(desired.Height * captureScale)));
+            var dpi = new Vector(96 * captureScale, 96 * captureScale);
 
             using var rtb = new RenderTargetBitmap(size, dpi);
 
@@ -185,7 +189,8 @@ public partial class MainWindow : Window
             var savePath = historyFiles[4];
             using (var output = File.OpenWrite(savePath))
             using (var skImage = SKImage.FromBitmap(bitmapToSave))
-            using (var skData = skImage.Encode(SKEncodedImageFormat.Webp, 90))
+            // Use highest quality (100) for WebP encoding (lossy but max quality supported by this API)
+            using (var skData = skImage.Encode(SKEncodedImageFormat.Webp, 100))
             {
                 skData.SaveTo(output);
             }
