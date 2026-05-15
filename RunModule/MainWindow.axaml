@@ -8,14 +8,70 @@
         Title="RunModule"
         SizeToContent="Manual"
         WindowStartupLocation="Manual">
+    <Window.Styles>
+        <!-- Local styles scoped to the ZoomSlider only to avoid affecting module styles -->
+        <Style Selector="Slider#ZoomSlider /template/ Thumb">
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="3"
+                            Width="{TemplateBinding Width}"
+                            Height="{TemplateBinding Height}" />
+                </ControlTemplate>
+            </Setter>
+            <Setter Property="Background" Value="#333333" />
+            <Setter Property="BorderBrush" Value="#777777" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="10" />
+        </Style>
+
+        <Style Selector="Slider#ZoomSlider">
+            <Setter Property="Background" Value="#1A1A1A" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="BorderBrush" Value="#555555" />
+        </Style>
+    </Window.Styles>
     <Grid RowDefinitions="*, Auto">
-        <VolumeMixer:VolumeMixer Name="ModuleControl" Grid.Row="0" />
-        <Button Grid.Row="1" 
-                Content="Save as WebP"
-                HorizontalAlignment="Center"
-                Margin="0,10"
-                Foreground="White"
-                Click="CaptureToWebP_Click"
-                ToolTip.Tip="Ensure module is visible and at proper scale (scale should be correct if RunModule code is unchanged)"/>
+        <!-- Main content area: module control with an overlay in the top-right for controls -->
+        <Grid Grid.Row="0">
+            <!-- The module user control -->
+            <VolumeMixer:VolumeMixer Name="ModuleControl" HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+            <!-- Top-right overlay containing only the zoom slider and percentage label -->
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Top"
+                        Margin="8"
+                        Spacing="6">
+                <!-- Zoom slider + percentage label -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="6">
+                    <!-- Dark-themed slider: neutral greys only -->
+                    <Slider Name="ZoomSlider"
+                            Minimum="100"
+                            Maximum="300"
+                            Value="100"
+                            Width="160"
+                            Background="#1A1A1A"
+                            Foreground="White"
+                            BorderBrush="#555555"
+                            ValueChanged="ZoomSlider_ValueChanged" />
+                    <TextBlock Name="ZoomLabel" Text="100%" VerticalAlignment="Center" Foreground="White"/>
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8" Margin="0,10">
+            <Button Content="Save as WebP"
+                    Foreground="White"
+                    Click="CaptureToWebP_Click"
+                    ToolTip.Tip="Ensure module is visible and at proper scale (scale should be correct if RunModule code is unchanged)"/>
+            <Button Content="Open WebP Folder"
+                    Foreground="White"
+                    Click="OpenWebPFolder_Click"
+                    ToolTip.Tip="Open the folder where WebP previews are saved in Explorer"/>
+        </StackPanel>
     </Grid>
 </Window>
