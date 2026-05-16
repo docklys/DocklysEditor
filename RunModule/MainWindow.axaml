@@ -63,15 +63,27 @@
             </StackPanel>
         </Grid>
 
+        <!-- Compact control row: smaller buttons, no hover tips, tighter spacing -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8" Margin="0,10">
-            <Button Content="Save as WebP"
+            <!-- Let buttons size to content so text is always visible; compact heights retained -->
+            <Button Content="Save WebP"
                     Foreground="White"
                     Click="CaptureToWebP_Click"
-                    ToolTip.Tip="Ensure module is visible and at proper scale (scale should be correct if RunModule code is unchanged)"/>
-            <Button Content="Open WebP Folder"
+                    Height="28"
+                    FontSize="11"
+                    Padding="8,2"/>
+            <Button Content="Open WebP"
                     Foreground="White"
                     Click="OpenWebPFolder_Click"
-                    ToolTip.Tip="Open the folder where WebP previews are saved in Explorer"/>
+                    Height="28"
+                    FontSize="11"
+                    Padding="8,2"/>
+            <Button Content="Open DLLs"
+                    Foreground="White"
+                    Click="OpenOutputModuleDllFolder_Click"
+                    Height="28"
+                    FontSize="11"
+                    Padding="8,2"/>
         </StackPanel>
     </Grid>
 </Window>

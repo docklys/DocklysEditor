@@ -68,8 +68,8 @@ public partial class MainWindow : Window
         control.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var desiredSize = control.DesiredSize;
 
-        // Get button height (approximately 40px + margins)
-        var buttonHeight = 60;
+        // Get button height (reduced to match compact buttons)
+        var buttonHeight = 40;
 
         // Calculate window size based on module content
         var windowWidth = Math.Min(Math.Max(desiredSize.Width + 40, 400), maxWidth); // Min 400px, max 90% screen
@@ -77,7 +77,7 @@ public partial class MainWindow : Window
 
         // Set window size
         this.Width = windowWidth;
-        this.Height = windowHeight + 50; // Add extra space for WebP Button and margins
+        this.Height = windowHeight + 30; // Add extra space for compact control row and margins
         
         // Position window in center-right of screen
         var centerX = workingArea.X + workingArea.Width - windowWidth - 20;
@@ -263,6 +263,44 @@ public partial class MainWindow : Window
         }
 
         var outputDir = Path.Combine(editorRoot, "OutputWebPModule");
+        Directory.CreateDirectory(outputDir);
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{outputDir}\"",
+                UseShellExecute = true,
+            };
+            Process.Start(psi);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to open Explorer: {ex}");
+        }
+    }
+
+    private void OpenOutputModuleDllFolder_Click(object sender, RoutedEventArgs e)
+    {
+        // Locate DocklysEditor root (reuse same approach as OpenWebPFolder_Click)
+        var searchDir = AppContext.BaseDirectory;
+        string? editorRoot = null;
+        while (searchDir != null && !Path.GetFileName(searchDir).Equals("DocklysEditor", StringComparison.OrdinalIgnoreCase))
+        {
+            searchDir = Directory.GetParent(searchDir)?.FullName;
+        }
+
+        if (searchDir != null)
+            editorRoot = searchDir;
+
+        if (editorRoot == null)
+        {
+            Debug.WriteLine("Could not locate DocklysEditor root to open OutputModuleDLL folder");
+            return;
+        }
+
+        var outputDir = Path.Combine(editorRoot, "OutputModuleDLL");
         Directory.CreateDirectory(outputDir);
 
         try
