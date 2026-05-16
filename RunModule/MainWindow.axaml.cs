@@ -303,7 +303,15 @@ public partial class MainWindow : Window
             button.Content = "Starting Docklys...";
             ToolTip.SetTip(button, null);
 
-            var exe = _lastDocklyExePath ?? FindDocklyExecutable();
+            string? exe = _lastDocklyExePath;
+            string? searchReport = null;
+            if (exe == null || !File.Exists(exe))
+            {
+                var found = FindDocklyExecutableWithReport();
+                exe = found.exePath;
+                searchReport = found.searchReport;
+            }
+
             string? startError = null;
             bool started = false;
             if (exe != null && File.Exists(exe))
@@ -321,27 +329,33 @@ public partial class MainWindow : Window
                 }
                 catch (Exception startEx)
                 {
-                    startError = $"{startEx.GetType().Name}: {startEx.Message}";
+                    startError =
+                        $"Failed to launch Dockly.\n\nExe: {exe}\n\n" +
+                        $"{startEx.GetType().Name}: {startEx.Message}\n\n{startEx.StackTrace}";
                     Debug.WriteLine($"[Deploy] Start Dockly failed: {startEx}");
                 }
+            }
+            else
+            {
+                startError = searchReport ?? "Could not locate Dockly.Desktop.exe or Dockly.exe.";
             }
 
             if (started)
             {
                 button.Content = "✓ Started";
                 ToolTip.SetTip(button, $"Launched: {exe}");
+                button.IsEnabled = true;
+                await Task.Delay(1500);
+                if (_lastBuildError == null && !_canStartDockly && !_docklyLocked)
+                {
+                    button.Content = originalContent;
+                    ToolTip.SetTip(button, null);
+                }
             }
             else
             {
-                button.Content = "✗ Start failed";
-                ToolTip.SetTip(button, startError ?? "Could not locate Dockly.exe or Dockly.Desktop.exe.");
-            }
-            button.IsEnabled = true;
-            await Task.Delay(1500);
-            if (_lastBuildError == null && !_canStartDockly && !_docklyLocked)
-            {
-                button.Content = originalContent;
-                ToolTip.SetTip(button, null);
+                // Persist the error so the user can hover to read it and click to copy + retry.
+                Fail("Start failed", startError ?? "Unknown error launching Dockly.");
             }
             return;
         }
@@ -657,18 +671,55 @@ public partial class MainWindow : Window
         }
     }
 
-    private string? FindDocklyExecutable()
+    private string? FindDocklyExecutable() => FindDocklyExecutableWithReport().exePath;
+
+    // Locates Dockly's exe across both published and dev layouts, and returns a
+    // human-readable search report when nothing is found (used for the error tooltip).
+    private (string? exePath, string? searchReport) FindDocklyExecutableWithReport()
     {
         var customModulesDir = FindDocklyCustomModulesDir();
-        if (customModulesDir == null) return null;
+        if (customModulesDir == null)
+            return (null, "Could not locate the Dockly\\CustomModules directory. Build/install Dockly so its folder is reachable from this project tree.");
+
         var docklyDir = Path.GetDirectoryName(customModulesDir);
-        if (docklyDir == null) return null;
-        foreach (var name in new[] { "Dockly.exe", "Dockly.Desktop.exe" })
+        if (docklyDir == null)
+            return (null, $"Could not determine Dockly root from:\n{customModulesDir}");
+
+        var searched = new System.Collections.Generic.List<string>();
+
+        // 1. Published / release layout: exe sits next to CustomModules.
+        foreach (var name in new[] { "Dockly.Desktop.exe", "Dockly.exe" })
         {
             var path = Path.Combine(docklyDir, name);
-            if (File.Exists(path)) return path;
+            searched.Add(path);
+            if (File.Exists(path)) return (path, null);
         }
-        return null;
+
+        // 2. Dev layout: <root>\<Proj>\bin\<Config>\<TFM>\<Proj>.exe — pick the freshest.
+        foreach (var projDir in new[] { "Dockly.Desktop", "Dockly" })
+        {
+            var binDir = Path.Combine(docklyDir, projDir, "bin");
+            searched.Add(Path.Combine(binDir, "**", $"{projDir}.exe"));
+            if (!Directory.Exists(binDir)) continue;
+            try
+            {
+                var freshest = Directory.GetFiles(binDir, $"{projDir}.exe", SearchOption.AllDirectories)
+                                        .OrderByDescending(File.GetLastWriteTimeUtc)
+                                        .FirstOrDefault();
+                if (freshest != null) return (freshest, null);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Deploy] Search under {binDir} failed: {ex.Message}");
+            }
+        }
+
+        var report =
+            "Could not locate Dockly.Desktop.exe or Dockly.exe.\n\n" +
+            "Searched:\n - " + string.Join("\n - ", searched) +
+            "\n\nBuild the Dockly.Desktop project (dotnet build in " +
+            Path.Combine(docklyDir, "Dockly.Desktop") + ") and try again.";
+        return (null, report);
     }
 
     private async void ReloadModule_Click(object sender, RoutedEventArgs e)
