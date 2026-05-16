@@ -22,6 +22,8 @@ public partial class MainWindow : Window
 {
     private string? _lastBuildError;
     private bool _docklyLocked;
+    private bool _canStartDockly;
+    private string? _lastDocklyExePath;
 
     public MainWindow()
     {
@@ -293,6 +295,57 @@ public partial class MainWindow : Window
 
         const string originalContent = "Push to Dockly!";
 
+        // If we just deployed and Dockly is offline: launch it, then reset to original.
+        if (_canStartDockly)
+        {
+            _canStartDockly = false;
+            button.IsEnabled = false;
+            button.Content = "Starting Docklys...";
+            ToolTip.SetTip(button, null);
+
+            var exe = _lastDocklyExePath ?? FindDocklyExecutable();
+            string? startError = null;
+            bool started = false;
+            if (exe != null && File.Exists(exe))
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = exe,
+                        UseShellExecute = true,
+                        WorkingDirectory = Path.GetDirectoryName(exe) ?? "",
+                    });
+                    started = true;
+                    _lastDocklyExePath = exe;
+                }
+                catch (Exception startEx)
+                {
+                    startError = $"{startEx.GetType().Name}: {startEx.Message}";
+                    Debug.WriteLine($"[Deploy] Start Dockly failed: {startEx}");
+                }
+            }
+
+            if (started)
+            {
+                button.Content = "✓ Started";
+                ToolTip.SetTip(button, $"Launched: {exe}");
+            }
+            else
+            {
+                button.Content = "✗ Start failed";
+                ToolTip.SetTip(button, startError ?? "Could not locate Dockly.exe or Dockly.Desktop.exe.");
+            }
+            button.IsEnabled = true;
+            await Task.Delay(1500);
+            if (_lastBuildError == null && !_canStartDockly && !_docklyLocked)
+            {
+                button.Content = originalContent;
+                ToolTip.SetTip(button, null);
+            }
+            return;
+        }
+
         // If Dockly is holding the DLL open: terminate it, then fall through to retry.
         if (_docklyLocked)
         {
@@ -472,7 +525,19 @@ public partial class MainWindow : Window
             Debug.WriteLine($"[Deploy] Copied {builtDll} -> {dest}");
             button.Content = "✓ Deployed";
             ToolTip.SetTip(button, $"Built and copied to:\n{dest}");
-            await ResetButton();
+            button.IsEnabled = true;
+            await Task.Delay(1000);
+
+            if (_lastBuildError == null && !IsDocklyRunning())
+            {
+                _canStartDockly = true;
+                button.Content = "Start Docklys!";
+                ToolTip.SetTip(button, "Click to launch Dockly.");
+            }
+            else
+            {
+                await ResetButton(0);
+            }
         }
         catch (Exception ex)
         {
@@ -567,7 +632,7 @@ public partial class MainWindow : Window
         return false;
     }
 
-    private static void KillDocklyProcesses()
+    private void KillDocklyProcesses()
     {
         foreach (var name in DocklyProcessNames)
         {
@@ -575,6 +640,8 @@ public partial class MainWindow : Window
             {
                 try
                 {
+                    // Capture exe path before kill so "Start Docklys!" can relaunch it.
+                    try { _lastDocklyExePath ??= p.MainModule?.FileName; } catch { }
                     p.Kill(entireProcessTree: true);
                     p.WaitForExit(3000);
                 }
@@ -588,6 +655,20 @@ public partial class MainWindow : Window
                 }
             }
         }
+    }
+
+    private string? FindDocklyExecutable()
+    {
+        var customModulesDir = FindDocklyCustomModulesDir();
+        if (customModulesDir == null) return null;
+        var docklyDir = Path.GetDirectoryName(customModulesDir);
+        if (docklyDir == null) return null;
+        foreach (var name in new[] { "Dockly.exe", "Dockly.Desktop.exe" })
+        {
+            var path = Path.Combine(docklyDir, name);
+            if (File.Exists(path)) return path;
+        }
+        return null;
     }
 
     private async void ReloadModule_Click(object sender, RoutedEventArgs e)
