@@ -63,33 +63,44 @@
             </StackPanel>
         </Grid>
 
-        <!-- Compact control row: smaller buttons, no hover tips, tighter spacing -->
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8" Margin="0,10">
-            <!-- Let buttons size to content so text is always visible; compact heights retained -->
-            <Button Content="↺ Reload Module"
-                    Foreground="White"
-                    Click="ReloadModule_Click"
-                    Height="28"
-                    FontSize="11"
-                    Padding="8,2"/>
-            <Button Content="Save WebP"
-                    Foreground="White"
-                    Click="CaptureToWebP_Click"
-                    Height="28"
-                    FontSize="11"
-                    Padding="8,2"/>
-            <Button Content="Open WebP"
-                    Foreground="White"
-                    Click="OpenWebPFolder_Click"
-                    Height="28"
-                    FontSize="11"
-                    Padding="8,2"/>
-            <Button Content="Open DLLs"
-                    Foreground="White"
-                    Click="OpenOutputModuleDllFolder_Click"
-                    Height="28"
-                    FontSize="11"
-                    Padding="8,2"/>
+        <!-- Two-row control area: dev actions on top, file ops on bottom -->
+        <StackPanel Grid.Row="1" Orientation="Vertical" HorizontalAlignment="Center" Spacing="6" Margin="0,8">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                <Button Content="↺ Reload Module"
+                        Foreground="White"
+                        Click="ReloadModule_Click"
+                        Height="28"
+                        FontSize="11"
+                        Padding="8,2"/>
+                <Button Name="BuildDeployButton"
+                        Content="⚡ Push to Dockly!"
+                        Foreground="White"
+                        Click="BuildAndDeploy_Click"
+                        Height="28"
+                        FontSize="11"
+                        Padding="8,2"
+                        ToolTip.ShowDelay="200"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                <Button Content="Save WebP"
+                        Foreground="White"
+                        Click="CaptureToWebP_Click"
+                        Height="28"
+                        FontSize="11"
+                        Padding="8,2"/>
+                <Button Content="Open WebP"
+                        Foreground="White"
+                        Click="OpenWebPFolder_Click"
+                        Height="28"
+                        FontSize="11"
+                        Padding="8,2"/>
+                <Button Content="Open DLLs"
+                        Foreground="White"
+                        Click="OpenOutputModuleDllFolder_Click"
+                        Height="28"
+                        FontSize="11"
+                        Padding="8,2"/>
+            </StackPanel>
         </StackPanel>
     </Grid>
 </Window>

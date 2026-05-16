@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Controls.Primitives;
@@ -11,6 +12,7 @@ using System.IO;
 using Avalonia;
 using System.Diagnostics;
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Docklys.ModuleContracts;
 
@@ -18,6 +20,7 @@ namespace RunModule;
 
 public partial class MainWindow : Window
 {
+    private string? _lastBuildError;
 
     public MainWindow()
     {
@@ -69,8 +72,8 @@ public partial class MainWindow : Window
         control.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var desiredSize = control.DesiredSize;
 
-        // Get button height (reduced to match compact buttons)
-        var buttonHeight = 40;
+        // Two-row button area: ~28px × 2 rows + 6px spacing + 16px margins ≈ 78px
+        var buttonHeight = 78;
 
         // Calculate window size based on module content
         var windowWidth = Math.Min(Math.Max(desiredSize.Width + 40, 400), maxWidth); // Min 400px, max 90% screen
@@ -280,6 +283,234 @@ public partial class MainWindow : Window
         {
             Debug.WriteLine($"Failed to open Explorer: {ex}");
         }
+    }
+
+    private async void BuildAndDeploy_Click(object sender, RoutedEventArgs e)
+    {
+        var button = sender as Button;
+        if (button == null) return;
+
+        const string originalContent = "Push to Dockly!";
+
+        // If in error state: copy log to clipboard, show confirmation, then rebuild.
+        if (_lastBuildError != null)
+        {
+            var errorText = _lastBuildError;
+            _lastBuildError = null;
+            try
+            {
+                var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+                if (clipboard != null) await clipboard.SetTextAsync(errorText);
+            }
+            catch { }
+            button.Content = "✓ Copied! Rebuilding...";
+            ToolTip.SetTip(button, null);
+            await Task.Delay(700);
+        }
+
+        async Task ResetButton(int delayMs = 2500)
+        {
+            await Task.Delay(delayMs);
+            if (_lastBuildError == null && button != null)
+            {
+                button.Content = originalContent;
+                ToolTip.SetTip(button, null);
+            }
+        }
+
+        void Fail(string shortLabel, string fullDetails)
+        {
+            Debug.WriteLine($"[Deploy] {shortLabel}:\n{fullDetails}");
+            _lastBuildError = fullDetails;
+            button.Content = $"✗ {shortLabel} — click to copy & retry";
+            button.IsEnabled = true;
+            ToolTip.SetTip(button, new TextBlock
+            {
+                Text = fullDetails,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 600,
+                FontFamily = new FontFamily("Consolas,Courier New,monospace"),
+                FontSize = 11,
+            });
+        }
+
+        try
+        {
+            _lastBuildError = null;
+            button.Content = "Building...";
+            button.IsEnabled = false;
+            ToolTip.SetTip(button, null);
+
+            var proj = FindVolumeMixerProject();
+            if (proj == null)
+            {
+                Fail("Project not found",
+                    $"Could not locate Docklys.VolumeMixer\\VolumeMixer.csproj by walking up from:\n{AppContext.BaseDirectory}");
+                return;
+            }
+
+            var customModulesDir = FindDocklyCustomModulesDir();
+            if (customModulesDir == null)
+            {
+                Fail("Dockly not found",
+                    $"Could not locate Dockly\\CustomModules by walking up from:\n{AppContext.BaseDirectory}\n\nAlso searched running processes named 'Dockly' / 'Dockly.Desktop'.");
+                return;
+            }
+
+            var projDir = Path.GetDirectoryName(proj) ?? "";
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = "dotnet",
+                Arguments = $"build \"{proj}\" -c Debug -nologo -v minimal",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+                WorkingDirectory = projDir,
+            };
+
+            Process? process;
+            try { process = Process.Start(psi); }
+            catch (Exception startEx)
+            {
+                Fail("dotnet failed to start",
+                    $"Could not launch the dotnet CLI.\n\n{startEx.GetType().Name}: {startEx.Message}\n\nMake sure the .NET SDK is installed and 'dotnet' is on PATH.");
+                return;
+            }
+            if (process == null)
+            {
+                Fail("dotnet not found",
+                    "Process.Start returned null. The .NET SDK may not be installed or 'dotnet' is not on PATH.");
+                return;
+            }
+
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            var stdout = await stdoutTask;
+            var stderr = await stderrTask;
+
+            if (process.ExitCode != 0)
+            {
+                var details =
+                    $"dotnet build exited with code {process.ExitCode}\n" +
+                    $"Project: {proj}\n" +
+                    $"Working dir: {projDir}\n" +
+                    "\n--- stdout ---\n" +
+                    (string.IsNullOrWhiteSpace(stdout) ? "(empty)" : stdout.Trim()) +
+                    "\n\n--- stderr ---\n" +
+                    (string.IsNullOrWhiteSpace(stderr) ? "(empty)" : stderr.Trim());
+                Fail("Build failed", details);
+                return;
+            }
+
+            // Find the freshest VolumeMixer.dll under bin\Debug
+            string? builtDll = null;
+            var binDir = Path.Combine(projDir, "bin", "Debug");
+            if (Directory.Exists(binDir))
+            {
+                builtDll = Directory.GetFiles(binDir, "VolumeMixer.dll", SearchOption.AllDirectories)
+                                    .OrderByDescending(File.GetLastWriteTimeUtc)
+                                    .FirstOrDefault();
+            }
+
+            if (builtDll == null || !File.Exists(builtDll))
+            {
+                Fail("DLL not found",
+                    $"Build succeeded but no VolumeMixer.dll found under:\n{binDir}");
+                return;
+            }
+
+            var dest = Path.Combine(customModulesDir, "VolumeMixer.dll");
+            try
+            {
+                File.Copy(builtDll, dest, overwrite: true);
+            }
+            catch (Exception copyEx)
+            {
+                Fail("Copy failed",
+                    $"Built DLL successfully but could not copy to Dockly.\n\nFrom: {builtDll}\nTo:   {dest}\n\n{copyEx.GetType().Name}: {copyEx.Message}\n\nIs Dockly currently running and holding the DLL open?");
+                return;
+            }
+
+            Debug.WriteLine($"[Deploy] Copied {builtDll} -> {dest}");
+            button.Content = "✓ Deployed";
+            ToolTip.SetTip(button, $"Built and copied to:\n{dest}");
+            await ResetButton();
+        }
+        catch (Exception ex)
+        {
+            Fail("Unexpected error",
+                $"{ex.GetType().Name}: {ex.Message}\n\n{ex.StackTrace}");
+        }
+        finally
+        {
+            // Only re-enable here when NOT in error state (Fail() handles its own re-enable).
+            if (button != null && _lastBuildError == null)
+                button.IsEnabled = true;
+        }
+    }
+
+    // Auto-detect the VolumeMixer.csproj. Prefer the editor-local copy (the one
+    // RunModule actually references); fall back to any other VolumeMixer.csproj
+    // found by walking up the directory tree.
+    private string? FindVolumeMixerProject()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir != null)
+        {
+            var editorLocal = Path.Combine(dir, "Docklys.VolumeMixer", "VolumeMixer.csproj");
+            if (File.Exists(editorLocal)) return editorLocal;
+
+            var parent = Directory.GetParent(dir);
+            if (parent == null) break;
+            dir = parent.FullName;
+        }
+        return null;
+    }
+
+    // Auto-detect Dockly's CustomModules folder. Tries common layouts:
+    //   <root>\Dockly\CustomModules
+    //   <root>\Dockly\Dockly\CustomModules
+    // Falls back to a running Dockly process's directory if nothing matches.
+    private string? FindDocklyCustomModulesDir()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir != null)
+        {
+            foreach (var rel in new[] {
+                Path.Combine("Dockly", "CustomModules"),
+                Path.Combine("Dockly", "Dockly", "CustomModules"),
+            })
+            {
+                var candidate = Path.Combine(dir, rel);
+                if (Directory.Exists(candidate)) return candidate;
+            }
+            var parent = Directory.GetParent(dir);
+            if (parent == null) break;
+            dir = parent.FullName;
+        }
+
+        try
+        {
+            var dockly = Process.GetProcessesByName("Dockly").FirstOrDefault()
+                         ?? Process.GetProcessesByName("Dockly.Desktop").FirstOrDefault();
+            var exe = dockly?.MainModule?.FileName;
+            if (exe != null)
+            {
+                var exeDir = Path.GetDirectoryName(exe);
+                if (exeDir != null)
+                {
+                    var cm = Path.Combine(exeDir, "CustomModules");
+                    Directory.CreateDirectory(cm);
+                    return cm;
+                }
+            }
+        }
+        catch { }
+
+        return null;
     }
 
     private async void ReloadModule_Click(object sender, RoutedEventArgs e)
