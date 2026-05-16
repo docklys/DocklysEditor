@@ -73,7 +73,7 @@
                         FontSize="11"
                         Padding="8,2"/>
                 <Button Name="BuildDeployButton"
-                        Content="⚡ Push to Dockly!"
+                        Content="⚡ Push to Docklys"
                         Foreground="White"
                         Click="BuildAndDeploy_Click"
                         Height="28"
