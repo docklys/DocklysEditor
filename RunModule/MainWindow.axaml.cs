@@ -21,6 +21,7 @@ namespace RunModule;
 public partial class MainWindow : Window
 {
     private string? _lastBuildError;
+    private bool _docklyLocked;
 
     public MainWindow()
     {
@@ -292,6 +293,28 @@ public partial class MainWindow : Window
 
         const string originalContent = "Push to Dockly!";
 
+        // If Dockly is holding the DLL open: terminate it, then fall through to retry.
+        if (_docklyLocked)
+        {
+            _docklyLocked = false;
+            _lastBuildError = null;
+            button.IsEnabled = false;
+            button.Content = "Closing Docklys...";
+            ToolTip.SetTip(button, null);
+            try
+            {
+                await Task.Run(KillDocklyProcesses);
+            }
+            catch (Exception killEx)
+            {
+                Debug.WriteLine($"[Deploy] Kill Dockly failed: {killEx}");
+            }
+            // Give the OS a moment to release the file handle on the DLL.
+            await Task.Delay(500);
+            button.IsEnabled = true;
+            // fall through to the normal build+copy flow below
+        }
+
         // If in error state: copy log to clipboard, show confirmation, then rebuild.
         if (_lastBuildError != null)
         {
@@ -429,8 +452,20 @@ public partial class MainWindow : Window
             }
             catch (Exception copyEx)
             {
+                // If Dockly is running it's almost certainly holding the DLL open.
+                // Offer a one-click "close & retry" instead of the generic error state.
+                if (IsDocklyRunning())
+                {
+                    _docklyLocked = true;
+                    _lastBuildError = null;
+                    button.Content = "Close Docklys!";
+                    button.IsEnabled = true;
+                    ToolTip.SetTip(button, $"Dockly is running and is holding {Path.GetFileName(dest)} open.\nClick to terminate Dockly and retry the push.");
+                    return;
+                }
+
                 Fail("Copy failed",
-                    $"Built DLL successfully but could not copy to Dockly.\n\nFrom: {builtDll}\nTo:   {dest}\n\n{copyEx.GetType().Name}: {copyEx.Message}\n\nIs Dockly currently running and holding the DLL open?");
+                    $"Built DLL successfully but could not copy to Dockly.\n\nFrom: {builtDll}\nTo:   {dest}\n\n{copyEx.GetType().Name}: {copyEx.Message}");
                 return;
             }
 
@@ -511,6 +546,48 @@ public partial class MainWindow : Window
         catch { }
 
         return null;
+    }
+
+    private static readonly string[] DocklyProcessNames = { "Dockly", "Dockly.Desktop" };
+
+    private static bool IsDocklyRunning()
+    {
+        foreach (var name in DocklyProcessNames)
+        {
+            var procs = Process.GetProcessesByName(name);
+            try
+            {
+                if (procs.Length > 0) return true;
+            }
+            finally
+            {
+                foreach (var p in procs) p.Dispose();
+            }
+        }
+        return false;
+    }
+
+    private static void KillDocklyProcesses()
+    {
+        foreach (var name in DocklyProcessNames)
+        {
+            foreach (var p in Process.GetProcessesByName(name))
+            {
+                try
+                {
+                    p.Kill(entireProcessTree: true);
+                    p.WaitForExit(3000);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[Deploy] Could not kill {name} (PID {p.Id}): {ex.Message}");
+                }
+                finally
+                {
+                    p.Dispose();
+                }
+            }
+        }
     }
 
     private async void ReloadModule_Click(object sender, RoutedEventArgs e)

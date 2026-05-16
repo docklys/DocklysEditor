@@ -3,8 +3,8 @@
              x:Class="DefaultModule.DefaultModule">
     <Border Background="{DynamicResource ColorModuleColor}" Padding="20" Height="950" Width="470" CornerRadius="10">
         <StackPanel>
-            <TextBlock Text="Purple DLL Module" FontSize="18" FontWeight="Bold"/>
-            <Button Name="TestButton" Content="Test Button" Width="100"/>
+            <TextBlock Text="Purple DLL Module" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource ColorModuleFont}"/>
+            <Button Name="TestButton" Content="Test Button" Width="100" Foreground="{DynamicResource ColorModuleFont}"/>
         </StackPanel>
     </Border>
 </UserControl>  

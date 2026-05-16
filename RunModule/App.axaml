@@ -10,6 +10,7 @@
                  <SolidColorBrush x:Key="ColorModuleBorder" Color="Transparent"/>
                  <SolidColorBrush x:Key="ColorBlack" Color="#2a3a3a"/>
                  <SolidColorBrush x:Key="ColorFont" Color="#4b5a52"/>
+                 <SolidColorBrush x:Key="ColorModuleFont" Color="White"/>
                  <SolidColorBrush x:Key="ColorAccent" Color="#202723"/>
                  <SolidColorBrush x:Key="ColorGray" Color="#586960"/>
                  <Color x:Key="ColorModuleAccentColor">White</Color>
