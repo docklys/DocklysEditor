@@ -11,6 +11,7 @@ using System.IO;
 using Avalonia;
 using System.Diagnostics;
 using System;
+using System.Threading.Tasks;
 using Docklys.ModuleContracts;
 
 namespace RunModule;
@@ -279,6 +280,25 @@ public partial class MainWindow : Window
         {
             Debug.WriteLine($"Failed to open Explorer: {ex}");
         }
+    }
+
+    private async void ReloadModule_Click(object sender, RoutedEventArgs e)
+    {
+        var control = this.FindControl<Control>("ModuleControl");
+        if (control == null) return;
+
+        var parent = control.Parent as Panel;
+        if (parent == null) return;
+
+        int index = parent.Children.IndexOf(control);
+        parent.Children.Remove(control);  // detach → Unloaded fires
+
+        await Task.Delay(150);            // simulate the gap between profile unload and reload
+
+        if (index >= 0 && index <= parent.Children.Count)
+            parent.Children.Insert(index, control);  // re-attach → Loaded fires
+        else
+            parent.Children.Add(control);
     }
 
     private void OpenOutputModuleDllFolder_Click(object sender, RoutedEventArgs e)
