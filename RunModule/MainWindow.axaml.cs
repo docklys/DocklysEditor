@@ -33,6 +33,8 @@ public partial class MainWindow : Window
 
     private void MainWindow_Loaded(object? sender, RoutedEventArgs e)
     {
+        InitializeSkinComboBox();
+
         // Auto-size window to fit module content
         AutoSizeWindow();
         Console.WriteLine(typeof(IModule.FontDummy).Assembly.GetName().Name);
@@ -566,16 +568,22 @@ public partial class MainWindow : Window
         }
     }
 
-    // Auto-detect the VolumeMixer.csproj. Prefer the editor-local copy (the one
-    // RunModule actually references); fall back to any other VolumeMixer.csproj
-    // found by walking up the directory tree.
+    // Auto-detect the VolumeMixer.csproj. Tries the current folder name
+    // ("VolumeMixer") first, then the legacy "Docklys.VolumeMixer" layout.
     private string? FindVolumeMixerProject()
     {
         var dir = AppContext.BaseDirectory;
         while (dir != null)
         {
-            var editorLocal = Path.Combine(dir, "Docklys.VolumeMixer", "VolumeMixer.csproj");
-            if (File.Exists(editorLocal)) return editorLocal;
+            foreach (var rel in new[]
+                     {
+                         Path.Combine("VolumeMixer", "VolumeMixer.csproj"),
+                         Path.Combine("Docklys.VolumeMixer", "VolumeMixer.csproj"),
+                     })
+            {
+                var candidate = Path.Combine(dir, rel);
+                if (File.Exists(candidate)) return candidate;
+            }
 
             var parent = Directory.GetParent(dir);
             if (parent == null) break;
@@ -739,6 +747,48 @@ public partial class MainWindow : Window
             parent.Children.Insert(index, control);  // re-attach → Loaded fires
         else
             parent.Children.Add(control);
+    }
+
+    private bool _suppressSkinSelectionChange;
+
+    private void InitializeSkinComboBox()
+    {
+        var combo = this.FindControl<ComboBox>("SkinComboBox");
+        if (combo == null) return;
+
+        var skins = App.Skins;
+        if (skins == null)
+        {
+            combo.IsEnabled = false;
+            combo.PlaceholderText = "No Dockly\\Skins folder found";
+            return;
+        }
+
+        var list = skins.ListSkins();
+        _suppressSkinSelectionChange = true;
+        try
+        {
+            combo.ItemsSource = list;
+            combo.SelectedItem = skins.ActiveSkinName;
+        }
+        finally
+        {
+            _suppressSkinSelectionChange = false;
+        }
+    }
+
+    private void SkinComboBox_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressSkinSelectionChange) return;
+        if (sender is not ComboBox combo) return;
+        if (combo.SelectedItem is not string name) return;
+
+        var skins = App.Skins;
+        if (skins == null) return;
+
+        var applied = skins.ApplySkin(name);
+        if (applied != null)
+            SkinHost.SavePersistedSkinName(applied);
     }
 
     private void OpenOutputModuleDllFolder_Click(object sender, RoutedEventArgs e)

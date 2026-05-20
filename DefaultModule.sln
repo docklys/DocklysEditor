@@ -6,7 +6,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RunModule", "RunModule\RunM
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Docklys.ModuleContracts", "Docklys.ModuleContracts\Docklys.ModuleContracts.csproj", "{83818B0A-E365-4315-AAE8-17DEC53944AC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VolumeMixer", "Docklys.VolumeMixer\VolumeMixer.csproj", "{B975C1B8-B857-4852-A8D6-0CEE20659CF7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VolumeMixer", "VolumeMixer\VolumeMixer.csproj", "{B975C1B8-B857-4852-A8D6-0CEE20659CF7}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

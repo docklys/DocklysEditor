@@ -40,15 +40,13 @@
             <!-- The module user control -->
             <VolumeMixer:VolumeMixer Name="ModuleControl" HorizontalAlignment="Center" VerticalAlignment="Center" />
 
-            <!-- Top-right overlay containing only the zoom slider and percentage label -->
+            <!-- Top overlay: zoom slider in the center, skin picker on the right -->
             <StackPanel Orientation="Horizontal"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Top"
                         Margin="8"
                         Spacing="6">
-                <!-- Zoom slider + percentage label -->
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="6">
-                    <!-- Dark-themed slider: neutral greys only -->
                     <Slider Name="ZoomSlider"
                             Minimum="100"
                             Maximum="300"
@@ -60,6 +58,17 @@
                             ValueChanged="ZoomSlider_ValueChanged" />
                     <TextBlock Name="ZoomLabel" Text="100%" VerticalAlignment="Center" Foreground="White"/>
                 </StackPanel>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Margin="8"
+                        Spacing="6">
+                <TextBlock Text="Skin:" VerticalAlignment="Center" Foreground="White"/>
+                <ComboBox Name="SkinComboBox"
+                          MinWidth="140"
+                          SelectionChanged="SkinComboBox_SelectionChanged"/>
             </StackPanel>
         </Grid>
 
