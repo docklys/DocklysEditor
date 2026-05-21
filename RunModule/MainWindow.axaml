@@ -272,6 +272,11 @@
                             Content="✎ Rename"
                             Click="RenameModule_Click"
                             ToolTip.Tip="Rename the currently displayed module" />
+                    <Button Name="TileSizeButton"
+                            Classes="toolbar"
+                            Content="⊡ Size"
+                            Click="ChangeTileSize_Click"
+                            ToolTip.Tip="Change the tile width and height of the active module" />
 
                     <!-- Hold-to-charge delete (Border, not Button — we drive
                          PointerPressed / Released ourselves so the Button

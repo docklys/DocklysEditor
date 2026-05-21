@@ -3,7 +3,7 @@
              x:Class="hello.hello">
     <Border Background="{DynamicResource ColorModuleColor}"
             Padding="8"
-            Width="110"
+            Width="230"
             Height="110"
             CornerRadius="10">
         <StackPanel HorizontalAlignment="Center"

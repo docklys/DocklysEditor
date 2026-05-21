@@ -1,6 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="Test.Test">
+             x:Class="spotify.spotify">
     <!-- 1x1 tile footprint (110x110) — same size VolumeMixer uses. -->
     <Border Background="{DynamicResource ColorModuleColor}"
             Padding="8"
@@ -10,15 +10,15 @@
         <StackPanel HorizontalAlignment="Center"
                     VerticalAlignment="Center"
                     Spacing="6">
-            <TextBlock Text="Test"
+            <TextBlock Text="spotify"
                        FontSize="11"
                        FontWeight="Bold"
                        Foreground="{DynamicResource ColorModuleFont}"
                        HorizontalAlignment="Center"
                        TextAlignment="Center"
                        TextWrapping="Wrap"/>
-            <Button Name="TestButton"
-                    Content="Test"
+            <Button Name="spotifyButton"
+                    Content="spotify"
                     FontSize="10"
                     Padding="8,2"
                     Foreground="{DynamicResource ColorModuleFont}"

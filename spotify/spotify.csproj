@@ -5,8 +5,8 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
     <ItemGroup>
-      <Compile Update="Test.axaml.cs">
-        <DependentUpon>Test.axaml</DependentUpon>
+      <Compile Update="spotify.axaml.cs">
+        <DependentUpon>spotify.axaml</DependentUpon>
       </Compile>
     </ItemGroup>
     <ItemGroup>

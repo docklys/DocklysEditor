@@ -1,16 +1,16 @@
 using Avalonia.Controls;
 using Docklys.ModuleContracts;
 
-namespace Test
+namespace spotify
 {
-    public partial class Test : UserControl, IModule
+    public partial class spotify : UserControl, IModule
     {
         // Identification
-        public string Id => "Test";
-        public string ModuleName => "Test";
+        public string Id => "spotify";
+        public string ModuleName => "spotify";
         public string ModuleVersion => "1.0.0";
         public string Category => "Default";
-        public string[] Tags => new [] { "Test", "example" };
+        public string[] Tags => new [] { "spotify", "example" };
 
         // Layout info — 1x1 = 110x110, matching VolumeMixer's footprint.
         public int TileWidth => 4;
@@ -35,7 +35,7 @@ namespace Test
             Console.WriteLine($"Module ID: {UniqueModuleId}");
         }
         
-        public Test()
+        public spotify()
         {
             InitializeComponent();
         }
