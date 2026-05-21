@@ -98,6 +98,10 @@ public partial class MainWindow
 
         foreach (var file in Directory.EnumerateFiles(projFolder, "*", SearchOption.AllDirectories))
         {
+            var rel = Path.GetRelativePath(projFolder, file);
+            if (rel.StartsWith("bin" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                rel.StartsWith("obj" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                continue;
             if (IsBinary(file)) continue;
             try
             {
@@ -112,6 +116,20 @@ public partial class MainWindow
             catch (Exception ex)
             {
                 Debug.WriteLine($"[TileSize] rewrite failed for {file}: {ex.Message}");
+            }
+        }
+
+        // Delete the Avalonia binary resource cache so the next build
+        // regenerates it from the updated AXAML. Without this the stale
+        // obj/*/Avalonia/resources bundle (which embeds raw AXAML text
+        // including the old Width/Height values) causes AVLN2000.
+        var objDir = Path.Combine(projFolder, "obj");
+        if (Directory.Exists(objDir))
+        {
+            foreach (var avDir in Directory.EnumerateDirectories(objDir, "Avalonia", SearchOption.AllDirectories))
+            {
+                try { Directory.Delete(avDir, recursive: true); }
+                catch (Exception ex) { Debug.WriteLine($"[TileSize] Avalonia cache delete failed: {ex.Message}"); }
             }
         }
     }

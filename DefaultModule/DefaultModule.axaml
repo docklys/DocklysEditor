@@ -4,7 +4,7 @@
     <!-- 1x1 tile footprint (110x110) — same size VolumeMixer uses. -->
     <Border Background="{DynamicResource ColorModuleColor}"
             Padding="8"
-            Width="230"
+            Width="110"
             Height="110"
             CornerRadius="10">
         <StackPanel HorizontalAlignment="Center"
