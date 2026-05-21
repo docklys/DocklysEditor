@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
         <TargetFramework>net9.0</TargetFramework>
@@ -28,6 +28,7 @@
     <ItemGroup>
         <ProjectReference Include="..\DefaultModule\DefaultModule.csproj" />
         <ProjectReference Include="..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj" />
+        <ProjectReference Include="..\hello\hello.csproj" />
         <ProjectReference Include="..\VolumeMixer\VolumeMixer.csproj" />
     </ItemGroup>
 </Project>

@@ -65,14 +65,14 @@
     "TileWidth": {
       "type": "parameter",
       "datatype": "int",
-      "replaces": "4",
+      "replaces": "2",
       "defaultValue": "2",
       "description": "Tile width in grid units (IModule.TileWidth)"
     },
     "TileHeight": {
       "type": "parameter",
       "datatype": "int",
-      "replaces": "8",
+      "replaces": "2",
       "defaultValue": "2",
       "description": "Tile height in grid units (IModule.TileHeight)"
     },
@@ -117,67 +117,11 @@
       },
       "replaces": "DefaultModule\", \"example"
     },
-    "CalculatedWidth": {
+    "_TilePxNote": {
       "type": "generated",
-      "generator": "switch",
-      "parameters": {
-        "evaluator": "C++",
-        "datatype": "string",
-        "cases": [
-          { "condition": "(TileWidth == 1)", "value": "110" },
-          { "condition": "(TileWidth == 2)", "value": "230" },
-          { "condition": "(TileWidth == 3)", "value": "350" },
-          { "condition": "(TileWidth == 4)", "value": "470" },
-          { "condition": "(TileWidth == 5)", "value": "590" },
-          { "condition": "(TileWidth == 6)", "value": "710" },
-          { "condition": "(TileWidth == 7)", "value": "830" },
-          { "condition": "(TileWidth == 8)", "value": "950" },
-          { "condition": "(TileWidth == 9)", "value": "1070" },
-          { "condition": "(TileWidth == 10)", "value": "1190" },
-          { "condition": "(TileWidth == 11)", "value": "1310" },
-          { "condition": "(TileWidth == 12)", "value": "1430" },
-          { "condition": "(TileWidth == 13)", "value": "1550" },
-          { "condition": "(TileWidth == 14)", "value": "1670" },
-          { "condition": "(TileWidth == 15)", "value": "1790" },
-          { "condition": "(TileWidth == 16)", "value": "1910" },
-          { "condition": "(TileWidth == 17)", "value": "2030" },
-          { "condition": "(TileWidth == 18)", "value": "2150" },
-          { "condition": "(TileWidth == 19)", "value": "2270" },
-          { "condition": "(TileWidth == 20)", "value": "2390" }
-        ]
-      },
-      "replaces": "470"
-    },
-    "CalculatedHeight": {
-      "type": "generated",
-      "generator": "switch",
-      "parameters": {
-        "evaluator": "C++",
-        "datatype": "string",
-        "cases": [
-          { "condition": "(TileHeight == 1)", "value": "110" },
-          { "condition": "(TileHeight == 2)", "value": "230" },
-          { "condition": "(TileHeight == 3)", "value": "350" },
-          { "condition": "(TileHeight == 4)", "value": "470" },
-          { "condition": "(TileHeight == 5)", "value": "590" },
-          { "condition": "(TileHeight == 6)", "value": "710" },
-          { "condition": "(TileHeight == 7)", "value": "830" },
-          { "condition": "(TileHeight == 8)", "value": "950" },
-          { "condition": "(TileHeight == 9)", "value": "1070" },
-          { "condition": "(TileHeight == 10)", "value": "1190" },
-          { "condition": "(TileHeight == 11)", "value": "1310" },
-          { "condition": "(TileHeight == 12)", "value": "1430" },
-          { "condition": "(TileHeight == 13)", "value": "1550" },
-          { "condition": "(TileHeight == 14)", "value": "1670" },
-          { "condition": "(TileHeight == 15)", "value": "1790" },
-          { "condition": "(TileHeight == 16)", "value": "1910" },
-          { "condition": "(TileHeight == 17)", "value": "2030" },
-          { "condition": "(TileHeight == 18)", "value": "2150" },
-          { "condition": "(TileHeight == 19)", "value": "2270" },
-          { "condition": "(TileHeight == 20)", "value": "2390" }
-        ]
-      },
-      "replaces": "950"
+      "generator": "constant",
+      "parameters": { "value": "tile-px-substitution-disabled" },
+      "//": "The editor preview always renders modules at 230x230 by default. Tile px substitution removed to avoid the source having two indistinguishable '230' literals (Width vs Height) that dotnet-new cannot disambiguate. Resize manually inside the new module's AXAML if you need a different footprint."
     }
   },
   "modifiers": [

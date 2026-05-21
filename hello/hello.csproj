@@ -1,12 +1,12 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
     </PropertyGroup>
     <ItemGroup>
-      <Compile Update="DefaultModule.axaml.cs">
-        <DependentUpon>DefaultModule.axaml</DependentUpon>
+      <Compile Update="hello.axaml.cs">
+        <DependentUpon>helloControl.axaml</DependentUpon>
       </Compile>
     </ItemGroup>
     <ItemGroup>

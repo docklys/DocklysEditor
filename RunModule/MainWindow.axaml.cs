@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Controls.Primitives;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Avalonia.Rendering.SceneGraph;
 using SkiaSharp;
@@ -34,79 +35,66 @@ public partial class MainWindow : Window
     private void MainWindow_Loaded(object? sender, RoutedEventArgs e)
     {
         InitializeSkinComboBox();
-
-        // Auto-size window to fit module content
-        AutoSizeWindow();
         Console.WriteLine(typeof(IModule.FontDummy).Assembly.GetName().Name);
 
-        // Ensure Zoom label shows current slider value on load and apply initial scale
+        // Ensure Zoom label shows current slider value on load. The actual
+        // transform is applied later by ShowModuleAtIndex once the catalog
+        // has loaded and the slot has its first module to scale.
         try
         {
             var zoom = this.FindControl<Slider>("ZoomSlider");
             var lbl = this.FindControl<TextBlock>("ZoomLabel");
-            if (zoom != null)
-            {
-                var v = zoom.Value;
-                if (lbl != null)
-                    lbl.Text = $"{(int)v}%";
-
-                var control = this.FindControl<Control>("ModuleControl");
-                if (control != null)
-                {
-                    var scale = v / 100.0;
-                    control.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
-                    control.RenderTransform = new ScaleTransform(scale, scale);
-                }
-            }
+            if (zoom != null && lbl != null)
+                lbl.Text = $"{(int)zoom.Value}%";
         }
         catch { }
+
+        // Discover modules, fill the slot, and refresh arrow visibility.
+        // Posted at Loaded priority so the window is fully measured first —
+        // AutoSizeWindow needs the slot's measured size to do its job.
+        Dispatcher.UIThread.Post(() =>
+        {
+            LoadCatalog();
+            ShowModuleAtIndex(_currentIndex);
+            UpdateScrollArrowVisibility();
+        }, DispatcherPriority.Loaded);
     }
 
+    // Initial size + position come from the XAML (Width=1035, Height=450,
+    // WindowStartupLocation=CenterScreen). This method's only job at
+    // runtime is to *grow* the window when a cycled module or a zoomed
+    // module would otherwise be clipped. It never repositions and never
+    // shrinks — the user expects the window to stay where they put it.
     private void AutoSizeWindow()
     {
-        var control = this.FindControl<Control>("ModuleControl");
+        var control = this.FindControl<Control>("ActiveModuleSlot");
         if (control == null) return;
 
-        // Get screen dimensions
         var screen = Screens.Primary;
         var workingArea = screen?.WorkingArea ?? new PixelRect(0, 0, 1920, 1080);
-        var maxWidth = workingArea.Width * 0.9; // 90% of screen width
-        var maxHeight = workingArea.Height * 0.9; // 90% of screen height
+        var maxWidth = workingArea.Width * 0.95;
+        var maxHeight = workingArea.Height * 0.95;
 
-        // Force measure the control to get its desired size
         control.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var desiredSize = control.DesiredSize;
 
-        // Two-row button area: ~28px × 2 rows + 6px spacing + 16px margins ≈ 78px
-        var buttonHeight = 78;
+        // Two-row button area: ~28px × 2 rows + spacing + margins ≈ 78px.
+        const int buttonHeight = 78;
+        var requiredWidth = Math.Min(desiredSize.Width + 40, maxWidth);
+        var requiredHeight = Math.Min(desiredSize.Height + buttonHeight + 70, maxHeight);
 
-        // Calculate window size based on module content
-        var windowWidth = Math.Min(Math.Max(desiredSize.Width + 40, 400), maxWidth); // Min 400px, max 90% screen
-        var windowHeight = Math.Min(Math.Max(desiredSize.Height + buttonHeight + 40, 300), maxHeight); // Min 300px, max 90% screen
-
-        // Set window size
-        this.Width = windowWidth;
-        this.Height = windowHeight + 30; // Add extra space for compact control row and margins
-        
-        // Position window in center-right of screen
-        var centerX = workingArea.X + workingArea.Width - windowWidth - 20;
-        var centerY = workingArea.Y + (workingArea.Height / 2) - ((windowHeight + 50) / 2) - 15; // Center vertically -15 for Header
-        
-        this.Position = new PixelPoint((int)centerX, (int)centerY);
-        
-        // Set minimum size to ensure usability
-        this.MinWidth = Math.Min(400, windowWidth);
-        this.MinHeight = Math.Min(300, windowHeight);
-
-        Debug.WriteLine($"Module desired size: {desiredSize.Width} x {desiredSize.Height}");
-        Debug.WriteLine($"Window size set to: {windowWidth} x {windowHeight + 50}");
-        Debug.WriteLine($"Window position set to: {centerX} x {centerY}");
-        Debug.WriteLine($"Screen working area: {workingArea.Width} x {workingArea.Height}");
+        if (requiredWidth > this.Width) this.Width = requiredWidth;
+        if (requiredHeight > this.Height) this.Height = requiredHeight;
     }
 
     private void CaptureToWebP_Click(object sender, RoutedEventArgs e)
     {
-        var control = this.FindControl<Control>("ModuleControl");
+        // WebP previews are per-module — capture the inner content of the
+        // active slot at 100%. The ContentControl wrapper would add
+        // alignment chrome to the bounding box, so reach through to its
+        // Content.
+        var slot = this.FindControl<ContentControl>("ActiveModuleSlot");
+        var control = slot?.Content as Control;
         if (control == null) return;
 
             // Capture at 100% scale without moving the visible module permanently.
@@ -236,21 +224,63 @@ public partial class MainWindow : Window
         try
         {
             var lbl = this.FindControl<TextBlock>("ZoomLabel");
-            var control = this.FindControl<Control>("ModuleControl");
             if (lbl != null)
                 lbl.Text = $"{(int)e.NewValue}%";
 
-            if (control != null)
-            {
-                var scale = e.NewValue / 100.0;
-                control.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
-                control.RenderTransform = new ScaleTransform(scale, scale);
-            }
+            ApplyZoomToActiveModule(e.NewValue);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"Zoom change failed: {ex}");
         }
+    }
+
+    // Pulled into a helper so ShowModuleAtIndex can re-apply the saved zoom
+    // when the slot's content changes.
+    private void ApplyZoomToActiveModule(double percent)
+    {
+        var slot = this.FindControl<ContentControl>("ActiveModuleSlot");
+        var control = slot?.Content as Control;
+        if (slot == null || control == null) return;
+
+        var scale = percent / 100.0;
+        control.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
+        control.RenderTransform = new ScaleTransform(scale, scale);
+
+        // RenderTransform scales the *visual* but not the layout slot, so
+        // a scaled module overflows the slot's bounds and gets clipped by
+        // the row / window. Reserve the scaled footprint by sizing the
+        // slot itself — the centered, transformed content then has room.
+        control.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var desired = control.DesiredSize;
+        if (desired.Width > 0 && desired.Height > 0)
+        {
+            slot.Width = desired.Width * scale;
+            slot.Height = desired.Height * scale;
+        }
+
+        // Grow the window if the scaled slot now needs more room than the
+        // current window provides. Never shrinks — the user shouldn't see
+        // the window get smaller when they drag zoom down.
+        GrowWindowToFitSlot(slot.Width, slot.Height);
+    }
+
+    // Window grow helper used by zoom. Same chrome math as AutoSizeWindow,
+    // but never repositions and never shrinks.
+    private void GrowWindowToFitSlot(double slotWidth, double slotHeight)
+    {
+        if (double.IsNaN(slotWidth) || double.IsNaN(slotHeight)) return;
+        var screen = Screens.Primary;
+        var workingArea = screen?.WorkingArea ?? new PixelRect(0, 0, 1920, 1080);
+        var maxWidth = workingArea.Width * 0.95;
+        var maxHeight = workingArea.Height * 0.95;
+        const int buttonHeight = 78;
+
+        var windowWidth = Math.Min(slotWidth + 40, maxWidth);
+        var targetHeight = Math.Min(slotHeight + buttonHeight + 70, maxHeight);
+
+        if (windowWidth > this.Width) this.Width = windowWidth;
+        if (targetHeight > this.Height) this.Height = targetHeight;
     }
     private void OpenWebPFolder_Click(object sender, RoutedEventArgs e)
     {
@@ -732,21 +762,15 @@ public partial class MainWindow : Window
 
     private async void ReloadModule_Click(object sender, RoutedEventArgs e)
     {
-        var control = this.FindControl<Control>("ModuleControl");
-        if (control == null) return;
+        var slot = this.FindControl<ContentControl>("ActiveModuleSlot");
+        if (slot == null) return;
 
-        var parent = control.Parent as Panel;
-        if (parent == null) return;
-
-        int index = parent.Children.IndexOf(control);
-        parent.Children.Remove(control);  // detach → Unloaded fires
-
-        await Task.Delay(150);            // simulate the gap between profile unload and reload
-
-        if (index >= 0 && index <= parent.Children.Count)
-            parent.Children.Insert(index, control);  // re-attach → Loaded fires
-        else
-            parent.Children.Add(control);
+        // Detach → Unloaded fires; then re-instantiate from the catalog so
+        // any state inside the previous instance is dropped (closer to
+        // what an end user sees on app restart).
+        slot.Content = null;
+        await Task.Delay(150);
+        ShowModuleAtIndex(_currentIndex);
     }
 
     private bool _suppressSkinSelectionChange;

@@ -1,18 +1,18 @@
 using Avalonia.Controls;
 using Docklys.ModuleContracts;
 
-namespace DefaultModule
+namespace hello
 {
-    public partial class DefaultModule : UserControl, IModule
+    public partial class hello : UserControl, IModule
     {
         // Identification
-        public string Id => "BlackModule";
-        public string ModuleName => "Default Module";
+        public string Id => "hello";
+        public string ModuleName => "hello";
         public string ModuleVersion => "1.0.0";
         public string Category => "Default";
-        public string[] Tags => new [] { "DefaultModule", "example" };
+        public string[] Tags => new [] { "hello", "example" };
 
-        // Layout info — 1x1 = 110x110, matching VolumeMixer's footprint.
+        // Layout info — 1x1 = 110x110 tile (matches VolumeMixer's footprint).
         public int TileWidth => 1;
         public int TileHeight => 1;
 
@@ -35,7 +35,7 @@ namespace DefaultModule
             Console.WriteLine($"Module ID: {UniqueModuleId}");
         }
         
-        public DefaultModule()
+        public hello()
         {
             InitializeComponent();
         }
