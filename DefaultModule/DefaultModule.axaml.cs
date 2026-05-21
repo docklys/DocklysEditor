@@ -13,7 +13,7 @@ namespace DefaultModule
         public string[] Tags => new [] { "DefaultModule", "example" };
 
         // Layout info — 1x1 = 110x110, matching VolumeMixer's footprint.
-        public int TileWidth => 1;
+        public int TileWidth => 2;
         public int TileHeight => 1;
 
         // Compatibility

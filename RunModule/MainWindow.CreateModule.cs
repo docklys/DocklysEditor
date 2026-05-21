@@ -448,8 +448,10 @@ public partial class MainWindow
         {
             Title = "Create New Module",
             Width = 480,
+            MinWidth = 380,
+            MinHeight = 180,
             SizeToContent = SizeToContent.Height,
-            CanResize = false,
+            CanResize = true,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Content = new StackPanel
             {
@@ -533,8 +535,10 @@ public partial class MainWindow
         {
             Title = title,
             Width = 400,
-            Height = 200,
-            CanResize = false,
+            MinWidth = 320,
+            MinHeight = 160,
+            SizeToContent = SizeToContent.Height,
+            CanResize = true,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Content = new StackPanel
             {
@@ -582,45 +586,76 @@ public partial class MainWindow
     private async Task ShowMessageDialog(string title, string message)
     {
         var tcs = new TaskCompletionSource<bool>();
+
+        var copyBtn = new Button
+        {
+            Content = "📋 Copy",
+            Padding = new Thickness(14, 4),
+        };
         var ok = new Button
         {
             Content = "OK",
             IsDefault = true,
             IsCancel = true,
             Padding = new Thickness(20, 4),
-            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(8, 0, 0, 0),
         };
+
+        // Buttons: Copy on the left, OK on the right — both in one row.
+        var buttonRow = new Grid
+        {
+            Margin = new Thickness(0, 12, 0, 0),
+            ColumnDefinitions = new ColumnDefinitions("Auto, *, Auto"),
+        };
+        Grid.SetColumn(copyBtn, 0);
+        Grid.SetColumn(ok, 2);
+        buttonRow.Children.Add(copyBtn);
+        buttonRow.Children.Add(ok);
+
+        // Scrollable text area so the window can be shrunk and long messages
+        // don't require a very tall window.
+        var scrollViewer = new ScrollViewer
+        {
+            Content = new TextBlock
+            {
+                Text = message,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = Brushes.White,
+            },
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+        };
+
+        // DockPanel: buttons pinned to bottom, text fills the rest so
+        // resizing the window gives more/less visible text.
+        var dockPanel = new DockPanel { Margin = new Thickness(16), LastChildFill = true };
+        DockPanel.SetDock(buttonRow, Dock.Bottom);
+        dockPanel.Children.Add(buttonRow);
+        dockPanel.Children.Add(scrollViewer);
 
         var window = new Window
         {
             Title = title,
             Width = 460,
+            MinWidth = 340,
+            MinHeight = 140,
+            MaxHeight = 620,
             SizeToContent = SizeToContent.Height,
-            CanResize = false,
+            CanResize = true,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Content = new StackPanel
-            {
-                Margin = new Thickness(16),
-                Spacing = 12,
-                Children =
-                {
-                    new TextBlock
-                    {
-                        Text = message,
-                        TextWrapping = TextWrapping.Wrap,
-                        Foreground = Brushes.White,
-                    },
-                    ok,
-                },
-            },
+            Content = dockPanel,
         };
         StyleDialog(window);
 
-        ok.Click += (_, _) =>
+        copyBtn.Click += async (_, _) =>
         {
-            tcs.TrySetResult(true);
-            window.Close();
+            var clipboard = TopLevel.GetTopLevel(window)?.Clipboard;
+            if (clipboard != null) await clipboard.SetTextAsync(message);
+            copyBtn.Content = "✓ Copied";
+            await Task.Delay(1400);
+            if (window.IsVisible) copyBtn.Content = "📋 Copy";
         };
+        ok.Click += (_, _) => { tcs.TrySetResult(true); window.Close(); };
         window.Closed += (_, _) => tcs.TrySetResult(true);
 
         await window.ShowDialog(this);

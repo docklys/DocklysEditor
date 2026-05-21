@@ -187,8 +187,10 @@ public partial class MainWindow
         {
             Title = "Change Tile Size",
             Width = 480,
+            MinWidth = 380,
+            MinHeight = 150,
             SizeToContent = SizeToContent.Height,
-            CanResize = false,
+            CanResize = true,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Content = new StackPanel
             {
