@@ -40,6 +40,11 @@ public partial class MainWindow
         { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ttf", ".otf",
           ".dll", ".pdb", ".exe", ".ico" };
 
+    // Pixel footprint per tile unit. Matches the existing
+    // .template.config switch table: 1 → 110, 2 → 230, … each tile is
+    // 120px and tile-1 is 10px short.
+    private static int PixelsForTiles(int tiles) => Math.Max(10, 120 * tiles - 10);
+
     private async void CreateModule_Click(object? sender, RoutedEventArgs e)
     {
         var solutionDir = FindEditorSolutionDir();
@@ -52,9 +57,9 @@ public partial class MainWindow
             return;
         }
 
-        var requested = await PromptForModuleName();
-        if (string.IsNullOrWhiteSpace(requested)) return;
-        var name = requested.Trim();
+        var spec = await PromptForNewModuleSpec();
+        if (spec == null) return;
+        var name = spec.Name;
 
         var (ok, reason) = ValidateModuleName(name, solutionDir);
         if (!ok)
@@ -66,7 +71,7 @@ public partial class MainWindow
         string targetDir = Path.Combine(solutionDir, name);
         try
         {
-            CloneDefaultModuleInto(solutionDir, targetDir, name);
+            CloneDefaultModuleInto(solutionDir, targetDir, name, spec.TileWidth, spec.TileHeight);
         }
         catch (Exception ex)
         {
@@ -92,7 +97,10 @@ public partial class MainWindow
         // user sees their module on screen immediately, no app restart.
         ReloadCatalogAndSelect(name);
 
-        var msg = $"Module '{name}' created at:\n{targetDir}";
+        var pxW = PixelsForTiles(spec.TileWidth);
+        var pxH = PixelsForTiles(spec.TileHeight);
+        var msg = $"Module '{name}' created at:\n{targetDir}\n\n" +
+                  $"Tile footprint: {spec.TileWidth}×{spec.TileHeight} ({pxW}×{pxH} px)";
         if (slnNote != null) msg += $"\n\nSolution note: {slnNote}";
         if (buildNote != null) msg += $"\n\nBuild note: {buildNote}\n" +
                                       "The module wasn't built, so it won't appear in the carousel yet. " +
@@ -100,6 +108,8 @@ public partial class MainWindow
 
         await ShowMessageDialog("Module created", msg);
     }
+
+    private sealed record NewModuleSpec(string Name, int TileWidth, int TileHeight);
 
     // Walk up from the running editor's BaseDirectory looking for the
     // editor solution. Mirrors the existing FindVolumeMixerProject /
@@ -190,7 +200,12 @@ public partial class MainWindow
         return null;
     }
 
-    private static void CloneDefaultModuleInto(string solutionDir, string targetDir, string newName)
+    private static void CloneDefaultModuleInto(
+        string solutionDir,
+        string targetDir,
+        string newName,
+        int tileWidth,
+        int tileHeight)
     {
         var sourceDir = Path.Combine(solutionDir, "DefaultModule");
         if (!Directory.Exists(sourceDir))
@@ -216,6 +231,29 @@ public partial class MainWindow
                     var newPath = Path.Combine(Path.GetDirectoryName(file)!, newBase);
                     File.Move(file, newPath);
                 }
+            }
+        }
+
+        // Patch the tile size. Template defaults are 1×1 (Width/Height=110,
+        // TileWidth/Height=>1); rewrite to the dev's chosen footprint.
+        var pixelWidth = PixelsForTiles(tileWidth);
+        var pixelHeight = PixelsForTiles(tileHeight);
+        foreach (var file in Directory.GetFiles(targetDir, "*", SearchOption.AllDirectories))
+        {
+            if (IsBinary(file)) continue;
+            try
+            {
+                var text = File.ReadAllText(file);
+                var rewritten = text
+                    .Replace("Width=\"110\"", $"Width=\"{pixelWidth}\"")
+                    .Replace("Height=\"110\"", $"Height=\"{pixelHeight}\"")
+                    .Replace("TileWidth => 1;", $"TileWidth => {tileWidth};")
+                    .Replace("TileHeight => 1;", $"TileHeight => {tileHeight};");
+                if (rewritten != text) File.WriteAllText(file, rewritten);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[CreateModule] size rewrite failed for {file}: {ex.Message}");
             }
         }
     }
@@ -327,6 +365,137 @@ public partial class MainWindow
     // Built inline rather than using MessageBox.Avalonia's input API
     // because that package's input-prompt class name moved between v2 and
     // v3, and we want this to work against whatever is referenced today.
+
+    // Richer Create dialog: name + tile width + tile height. No upper limit
+    // on the tile dimensions — devs can scaffold a 50×50 module if they
+    // want one (host placement is on them). Live "X × Y px" preview
+    // updates as they type so they can see the resulting AXAML footprint.
+    private async Task<NewModuleSpec?> PromptForNewModuleSpec()
+    {
+        var tcs = new TaskCompletionSource<NewModuleSpec?>();
+
+        var nameBox = new TextBox { Width = 320, Watermark = "e.g. MyNewModule" };
+        var widthBox = new TextBox { Width = 70, Text = "1", FontSize = 12 };
+        var heightBox = new TextBox { Width = 70, Text = "1", FontSize = 12 };
+        var preview = new TextBlock
+        {
+            Text = "= 110 × 110 px",
+            FontSize = 11,
+            Foreground = Brushes.Gray,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0),
+        };
+
+        void UpdatePreview()
+        {
+            if (int.TryParse(widthBox.Text, out var w) && w >= 1 &&
+                int.TryParse(heightBox.Text, out var h) && h >= 1)
+            {
+                preview.Text = $"= {PixelsForTiles(w)} × {PixelsForTiles(h)} px";
+                preview.Foreground = Brushes.Gray;
+            }
+            else
+            {
+                preview.Text = "(width and height must be whole numbers ≥ 1)";
+                preview.Foreground = new SolidColorBrush(Color.Parse("#D08080"));
+            }
+        }
+        widthBox.TextChanged += (_, _) => UpdatePreview();
+        heightBox.TextChanged += (_, _) => UpdatePreview();
+
+        var nameHint = new TextBlock
+        {
+            Text = "Letters, digits, and underscores. Must start with a letter or underscore.",
+            FontSize = 11,
+            Foreground = Brushes.Gray,
+            Margin = new Thickness(0, 4, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        var sizeRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            VerticalAlignment = VerticalAlignment.Center,
+            Children =
+            {
+                new TextBlock { Text = "Width", FontSize = 12, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center },
+                widthBox,
+                new TextBlock { Text = "× Height", FontSize = 12, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center },
+                heightBox,
+                preview,
+            },
+        };
+        var sizeHint = new TextBlock
+        {
+            Text = "Module tile footprint. 1×1 ≈ 110×110 px; each extra tile adds 120 px. No upper limit.",
+            FontSize = 11,
+            Foreground = Brushes.Gray,
+            Margin = new Thickness(0, 4, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+        };
+
+        var okBtn = new Button { Content = "Create", IsDefault = true, Padding = new Thickness(16, 4) };
+        var cancel = new Button
+        {
+            Content = "Cancel",
+            IsCancel = true,
+            Padding = new Thickness(16, 4),
+            Margin = new Thickness(8, 0, 0, 0),
+        };
+
+        var window = new Window
+        {
+            Title = "Create New Module",
+            Width = 480,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                Spacing = 4,
+                Children =
+                {
+                    new TextBlock { Text = "Module name", Foreground = Brushes.White },
+                    nameBox,
+                    nameHint,
+                    new TextBlock { Text = "Tile size", Foreground = Brushes.White, Margin = new Thickness(0, 12, 0, 0) },
+                    sizeRow,
+                    sizeHint,
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Margin = new Thickness(0, 16, 0, 0),
+                        Children = { okBtn, cancel },
+                    },
+                },
+            },
+        };
+        StyleDialog(window);
+
+        okBtn.Click += (_, _) =>
+        {
+            var rawName = nameBox.Text?.Trim() ?? "";
+            if (string.IsNullOrEmpty(rawName)) { nameBox.Focus(); return; }
+            if (!int.TryParse(widthBox.Text, out var w) || w < 1) { widthBox.Focus(); return; }
+            if (!int.TryParse(heightBox.Text, out var h) || h < 1) { heightBox.Focus(); return; }
+            tcs.TrySetResult(new NewModuleSpec(rawName, w, h));
+            window.Close();
+        };
+        cancel.Click += (_, _) =>
+        {
+            tcs.TrySetResult(null);
+            window.Close();
+        };
+        window.Closed += (_, _) => tcs.TrySetResult(null);
+
+        nameBox.AttachedToVisualTree += (_, _) => nameBox.Focus();
+
+        await window.ShowDialog(this);
+        return await tcs.Task;
+    }
 
     private async Task<string?> PromptForModuleName(string? initial = null, string title = "Create New Module")
     {

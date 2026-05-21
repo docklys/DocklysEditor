@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        mc:Ignorable="d" d:DesignWidth="776" d:DesignHeight="338"
         x:Class="RunModule.MainWindow"
         Title="RunModule"
         Width="776"
@@ -28,7 +28,7 @@
         <Color x:Key="SystemAccentColorDark3">#555555</Color>
     </Window.Resources>
     <Window.Styles>
-        <!-- Local styles scoped to the ZoomSlider only to avoid affecting module styles -->
+        <!-- Zoom slider thumb: solid white pill to match the b/w palette. -->
         <Style Selector="Slider#ZoomSlider /template/ Thumb">
             <Setter Property="Template">
                 <ControlTemplate>
@@ -43,20 +43,32 @@
             <Setter Property="Background" Value="White" />
             <Setter Property="BorderBrush" Value="#777777" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Width" Value="16" />
+            <Setter Property="Width" Value="14" />
             <Setter Property="Height" Value="10" />
         </Style>
-
         <Style Selector="Slider#ZoomSlider">
             <Setter Property="Background" Value="#1A1A1A" />
             <Setter Property="Foreground" Value="#FFFFFF" />
             <Setter Property="BorderBrush" Value="#555555" />
         </Style>
 
+        <!-- Section dividers between top toolbar / preview / bottom toolbar. -->
+        <Style Selector="Border.toolbar-bar">
+            <Setter Property="Background" Value="#202020" />
+            <Setter Property="BorderBrush" Value="#2F2F2F" />
+        </Style>
+
+        <!-- Captions / muted labels above grouped controls. -->
+        <Style Selector="TextBlock.caption">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Foreground" Value="#888888" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
         <!-- Carousel arrow buttons: chrome-free, just clean white chevrons. -->
         <Style Selector="Button.scroll-arrow">
-            <Setter Property="Width" Value="40" />
-            <Setter Property="Height" Value="64" />
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="56" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -77,7 +89,6 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
         </Style>
-        <!-- The chevron itself — slightly thicker stroke on hover for feedback. -->
         <Style Selector="Button.scroll-arrow Path">
             <Setter Property="Stroke" Value="White" />
             <Setter Property="StrokeThickness" Value="2.5" />
@@ -88,11 +99,9 @@
             <Setter Property="StrokeThickness" Value="3.5" />
         </Style>
 
-        <!-- Small dev toolbar buttons share a monochrome look. We override
-             the ContentPresenter background explicitly because the Fluent
-             theme otherwise paints the accent (blue) on hover/press. -->
+        <!-- Dev toolbar buttons share a compact monochrome look. -->
         <Style Selector="Button.toolbar">
-            <Setter Property="Height" Value="28" />
+            <Setter Property="Height" Value="26" />
             <Setter Property="FontSize" Value="11" />
             <Setter Property="Padding" Value="10,2" />
             <Setter Property="Foreground" Value="White" />
@@ -123,8 +132,34 @@
             <Setter Property="TextElement.Foreground" Value="#666666" />
         </Style>
 
-        <!-- Skin picker matches the toolbar buttons: dark bg, white fg,
-             grey border, no Fluent accent anywhere in the chain. -->
+        <!-- The "primary" call-to-action: the deploy button. Lighter bg
+             so it reads as the headline action without breaking the
+             monochrome palette. -->
+        <Style Selector="Button.toolbar.primary /template/ ContentPresenter">
+            <Setter Property="Background" Value="#4A4A4A" />
+            <Setter Property="BorderBrush" Value="#888888" />
+        </Style>
+        <Style Selector="Button.toolbar.primary:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#5C5C5C" />
+            <Setter Property="BorderBrush" Value="#AAAAAA" />
+        </Style>
+        <Style Selector="Button.toolbar.primary:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#383838" />
+            <Setter Property="BorderBrush" Value="#888888" />
+        </Style>
+
+        <!-- Hold-to-charge delete widget. -->
+        <Style Selector="Border.delete-btn">
+            <Setter Property="Height" Value="26" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Background" Value="#3A3A3A" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- Skin picker matches the toolbar buttons. -->
         <Style Selector="ComboBox#SkinComboBox">
             <Setter Property="Background" Value="#2A2A2A" />
             <Setter Property="Foreground" Value="White" />
@@ -133,7 +168,7 @@
             <Setter Property="CornerRadius" Value="3" />
             <Setter Property="Padding" Value="8,2" />
             <Setter Property="FontSize" Value="11" />
-            <Setter Property="Height" Value="28" />
+            <Setter Property="Height" Value="26" />
         </Style>
         <Style Selector="ComboBox#SkinComboBox /template/ Border#Background">
             <Setter Property="Background" Value="#2A2A2A" />
@@ -150,7 +185,6 @@
         <Style Selector="ComboBox#SkinComboBox:focus /template/ Border#Background">
             <Setter Property="BorderBrush" Value="#888888" />
         </Style>
-        <!-- Items inside the popup — same dark theme. -->
         <Style Selector="ComboBoxItem">
             <Setter Property="Foreground" Value="White" />
             <Setter Property="Background" Value="#2A2A2A" />
@@ -174,95 +208,96 @@
     </Window.Styles>
 
     <Grid RowDefinitions="Auto, *, Auto">
-        <!-- ───── Top toolbar: rename + module name | zoom | skin ───── -->
-        <Grid Grid.Row="0" Margin="8" ColumnDefinitions="Auto, *, Auto">
-            <!-- Left: rename + delete + active module name -->
-            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <Button Name="RenameButton"
-                        Classes="toolbar"
-                        Content="✎ Rename"
-                        Click="RenameModule_Click"
-                        ToolTip.Tip="Rename the currently displayed module" />
 
-                <!-- Hold-to-charge delete widget. Border (not Button) so we
-                     can drive PointerPressed/Released ourselves without
-                     Button's Click machinery firing on release. -->
-                <Border Name="DeleteButton"
-                        Height="28"
-                        Width="145"
-                        CornerRadius="3"
-                        Background="#3A3A3A"
-                        BorderBrush="#555555"
-                        BorderThickness="1"
-                        Cursor="Hand"
-                        PointerPressed="DeleteButton_PointerPressed"
-                        PointerReleased="DeleteButton_PointerReleased"
-                        PointerCaptureLost="DeleteButton_PointerCaptureLost"
-                        VerticalAlignment="Center"
-                        ToolTip.Tip="Press and HOLD to charge a deletion, then enter 1234 to confirm">
-                    <Grid ClipToBounds="True">
-                        <Border Name="DeleteChargeFill"
-                                HorizontalAlignment="Left"
-                                Background="#888888"
-                                Width="0" />
-                        <TextBlock Name="DeleteButtonLabel"
-                                   Text="✕ Hold to delete"
-                                   FontSize="11"
-                                   Foreground="White"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center" />
-                    </Grid>
-                </Border>
+        <!-- ═════════ Top bar: identity | view | skin ═════════ -->
+        <Border Grid.Row="0"
+                Classes="toolbar-bar"
+                BorderThickness="0,0,0,1"
+                Padding="10,6">
+            <Grid ColumnDefinitions="Auto, *, Auto">
 
-                <TextBlock Name="ActiveModuleNameLabel"
-                           Text="(no module)"
-                           FontSize="13"
-                           FontWeight="SemiBold"
-                           Foreground="White"
-                           VerticalAlignment="Center"/>
-            </StackPanel>
+                <!-- Module identity + per-module actions -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Name="ActiveModuleNameLabel"
+                               Text="(no module)"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="White"
+                               VerticalAlignment="Center"
+                               MinWidth="80"/>
+                    <Button Name="RenameButton"
+                            Classes="toolbar"
+                            Content="✎ Rename"
+                            Click="RenameModule_Click"
+                            ToolTip.Tip="Rename the currently displayed module" />
 
-            <!-- Center: zoom -->
-            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
-                <Slider Name="ZoomSlider"
-                        Minimum="100"
-                        Maximum="300"
-                        Value="100"
-                        Width="160"
-                        Background="#1A1A1A"
-                        Foreground="White"
-                        BorderBrush="#555555"
-                        ValueChanged="ZoomSlider_ValueChanged" />
-                <TextBlock Name="ZoomLabel" Text="100%" VerticalAlignment="Center" Foreground="White"/>
-            </StackPanel>
+                    <!-- Hold-to-charge delete (Border, not Button — we drive
+                         PointerPressed / Released ourselves so the Button
+                         Click handler doesn't interfere). -->
+                    <Border Name="DeleteButton"
+                            Classes="delete-btn"
+                            Width="130"
+                            PointerPressed="DeleteButton_PointerPressed"
+                            PointerReleased="DeleteButton_PointerReleased"
+                            PointerCaptureLost="DeleteButton_PointerCaptureLost"
+                            ToolTip.Tip="Press and HOLD to charge a deletion, then enter 1234 to confirm">
+                        <Grid ClipToBounds="True">
+                            <Border Name="DeleteChargeFill"
+                                    HorizontalAlignment="Left"
+                                    Background="#888888"
+                                    Width="0" />
+                            <TextBlock Name="DeleteButtonLabel"
+                                       Text="✕ Hold to delete"
+                                       FontSize="11"
+                                       Foreground="White"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
 
-            <!-- Right: skin picker -->
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                <TextBlock Text="Skin:" VerticalAlignment="Center" Foreground="White"/>
-                <ComboBox Name="SkinComboBox"
-                          MinWidth="140"
-                          SelectionChanged="SkinComboBox_SelectionChanged"/>
-            </StackPanel>
-        </Grid>
+                <!-- Center: zoom -->
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="6">
+                    <TextBlock Text="Zoom" Classes="caption"/>
+                    <Slider Name="ZoomSlider"
+                            Minimum="100"
+                            Maximum="300"
+                            Value="100"
+                            Width="140"
+                            ValueChanged="ZoomSlider_ValueChanged"
+                            VerticalAlignment="Center"/>
+                    <TextBlock Name="ZoomLabel"
+                               Text="100%"
+                               FontSize="11"
+                               Foreground="White"
+                               VerticalAlignment="Center"
+                               MinWidth="34"/>
+                </StackPanel>
 
-        <!-- ───── Module preview: one slot + left/right cycle arrows ───── -->
+                <!-- Right: skin -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Text="Skin" Classes="caption"/>
+                    <ComboBox Name="SkinComboBox"
+                              MinWidth="120"
+                              SelectionChanged="SkinComboBox_SelectionChanged"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ═════════ Module preview: one slot + cycle arrows ═════════ -->
         <Grid Grid.Row="1">
-            <!-- The slot for the active module. Filled programmatically by
-                 the ModuleCatalog code based on _currentIndex. -->
             <ContentControl Name="ActiveModuleSlot"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center" />
-
-            <!-- Carousel arrows: cycle to previous / next module in the
-                 catalog. Visibility is driven by catalog size + index.
-                 Geometry: "<" and ">" chevrons drawn as a 3-point Path
-                 (top → tip → bottom) with rounded stroke caps + joins,
-                 so the corner looks like a clean rounded V. -->
             <Button Name="ScrollLeftButton"
                     Classes="scroll-arrow"
                     HorizontalAlignment="Left"
                     VerticalAlignment="Center"
-                    Margin="12,0,0,0"
+                    Margin="10,0,0,0"
                     IsVisible="False"
                     Click="ScrollLeft_Click"
                     ToolTip.Tip="Previous module">
@@ -272,7 +307,7 @@
                     Classes="scroll-arrow"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Center"
-                    Margin="0,0,12,0"
+                    Margin="0,0,10,0"
                     IsVisible="False"
                     Click="ScrollRight_Click"
                     ToolTip.Tip="Next module">
@@ -280,25 +315,52 @@
             </Button>
         </Grid>
 
-        <!-- ───── Bottom toolbar: dev actions + file ops ───── -->
-        <StackPanel Grid.Row="2" Orientation="Vertical" HorizontalAlignment="Center" Spacing="6" Margin="0,8">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
-                <Button Classes="toolbar" Content="↺ Reload Module" Click="ReloadModule_Click"/>
-                <Button Classes="toolbar"
-                        Content="✚ Create Module"
-                        Click="CreateModule_Click"
-                        ToolTip.Tip="Scaffold a new module by cloning DefaultModule"/>
-                <Button Name="BuildDeployButton"
-                        Classes="toolbar"
+        <!-- ═════════ Bottom bar: lifecycle | deploy | artifacts ═════════
+             Three logical groups, separated by elastic gaps. Lifecycle on
+             the left (Create/Reload), the headline deploy action centered
+             and styled as primary, and artifact ops aligned right.        -->
+        <Border Grid.Row="2"
+                Classes="toolbar-bar"
+                BorderThickness="0,1,0,0"
+                Padding="10,6">
+            <Grid ColumnDefinitions="Auto, *, Auto, *, Auto">
+
+                <!-- Module lifecycle -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Classes="toolbar"
+                            Content="✚ New"
+                            Click="CreateModule_Click"
+                            ToolTip.Tip="Scaffold a new module by cloning DefaultModule"/>
+                    <Button Classes="toolbar"
+                            Content="↺ Reload"
+                            Click="ReloadModule_Click"
+                            ToolTip.Tip="Re-instantiate the active module"/>
+                </StackPanel>
+
+                <!-- Deploy (center, primary styling) -->
+                <Button Grid.Column="2"
+                        Name="BuildDeployButton"
+                        Classes="toolbar primary"
                         Content="⚡ Push to Docklys"
                         Click="BuildAndDeploy_Click"
                         ToolTip.ShowDelay="200"/>
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
-                <Button Classes="toolbar" Content="Save WebP" Click="CaptureToWebP_Click"/>
-                <Button Classes="toolbar" Content="Open WebP" Click="OpenWebPFolder_Click"/>
-                <Button Classes="toolbar" Content="Open DLLs" Click="OpenOutputModuleDllFolder_Click"/>
-            </StackPanel>
-        </StackPanel>
+
+                <!-- Artifacts -->
+                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Classes="toolbar"
+                            Content="Save .webp"
+                            Click="CaptureToWebP_Click"
+                            ToolTip.Tip="Save a screenshot of the active module"/>
+                    <Button Classes="toolbar"
+                            Content="📂 .webp"
+                            Click="OpenWebPFolder_Click"
+                            ToolTip.Tip="Open the OutputWebPModule folder"/>
+                    <Button Classes="toolbar"
+                            Content="📂 .dll"
+                            Click="OpenOutputModuleDllFolder_Click"
+                            ToolTip.Tip="Open the OutputModuleDLL folder"/>
+                </StackPanel>
+            </Grid>
+        </Border>
     </Grid>
 </Window>

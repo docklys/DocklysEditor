@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -142,21 +143,15 @@ public partial class MainWindow : Window
 
             // Proceed to saving below (history logic)
 
-            // Save as WebP — walk up from the exe's directory to find DocklysEditor root
-            var searchDir = AppContext.BaseDirectory;
-            string? editorRoot = null;
-
-            while (searchDir != null && !Path.GetFileName(searchDir).Equals("DocklysEditor", StringComparison.OrdinalIgnoreCase))
-            {
-                searchDir = Directory.GetParent(searchDir)?.FullName;
-            }
-
-            if (searchDir != null)
-                editorRoot = searchDir;
-
+            // Locate the editor solution root via the .sln file — was
+            // previously walking up looking for a folder literally named
+            // "DocklysEditor", which never matched (the actual folder is
+            // "DocklysModuleEditor") so the capture silently dropped on
+            // the floor.
+            var editorRoot = FindEditorSolutionDir();
             if (editorRoot == null)
             {
-                Debug.WriteLine($"❌ Could not locate DocklysEditor root from: {AppContext.BaseDirectory}");
+                Debug.WriteLine($"❌ Could not locate the editor solution root (no DefaultModule.sln) from: {AppContext.BaseDirectory}");
                 return;
             }
 
@@ -282,41 +277,41 @@ public partial class MainWindow : Window
         if (windowWidth > this.Width) this.Width = windowWidth;
         if (targetHeight > this.Height) this.Height = targetHeight;
     }
-    private void OpenWebPFolder_Click(object sender, RoutedEventArgs e)
+    private async void OpenWebPFolder_Click(object sender, RoutedEventArgs e)
     {
-        // Locate DocklysEditor root
-        var searchDir = AppContext.BaseDirectory;
-        string? editorRoot = null;
-        while (searchDir != null && !Path.GetFileName(searchDir).Equals("DocklysEditor", StringComparison.OrdinalIgnoreCase))
-        {
-            searchDir = Directory.GetParent(searchDir)?.FullName;
-        }
+        await OpenEditorOutputFolder("OutputWebPModule");
+    }
 
-        if (searchDir != null)
-            editorRoot = searchDir;
-
+    // Shared opener for the OutputWebPModule and OutputModuleDLL folders.
+    // Both live at the editor solution root (next to DefaultModule.sln).
+    private async Task OpenEditorOutputFolder(string subfolderName)
+    {
+        var editorRoot = FindEditorSolutionDir();
         if (editorRoot == null)
         {
-            Debug.WriteLine("Could not locate DocklysEditor root to open WebP folder");
+            await ShowMessageDialog("Couldn't open folder",
+                "The editor solution root (the folder containing DefaultModule.sln) " +
+                "wasn't reachable by walking up from " + AppContext.BaseDirectory);
             return;
         }
 
-        var outputDir = Path.Combine(editorRoot, "OutputWebPModule");
+        var outputDir = Path.Combine(editorRoot, subfolderName);
         Directory.CreateDirectory(outputDir);
 
         try
         {
-            var psi = new ProcessStartInfo
+            // UseShellExecute=true lets the OS pick the appropriate handler
+            // (Explorer on Windows, Finder on macOS via `open`, xdg-open on Linux).
+            Process.Start(new ProcessStartInfo
             {
-                FileName = "explorer.exe",
-                Arguments = $"\"{outputDir}\"",
+                FileName = outputDir,
                 UseShellExecute = true,
-            };
-            Process.Start(psi);
+            });
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Failed to open Explorer: {ex}");
+            await ShowMessageDialog("Couldn't open folder",
+                $"Failed to open {outputDir}\n\n{ex.GetType().Name}: {ex.Message}");
         }
     }
 
@@ -463,19 +458,37 @@ public partial class MainWindow : Window
             button.IsEnabled = false;
             ToolTip.SetTip(button, null);
 
-            var proj = FindVolumeMixerProject();
-            if (proj == null)
+            // Deploy the *active* module — whichever the carousel is on —
+            // not a hardcoded VolumeMixer.
+            if (_catalog.Count == 0)
+            {
+                Fail("No active module",
+                    "No module is currently loaded. Use ✚ New to scaffold one before pushing.");
+                return;
+            }
+            var activeEntry = _catalog[Math.Clamp(_currentIndex, 0, _catalog.Count - 1)];
+            var proj = activeEntry.CsprojPath;
+            var assemblyName = activeEntry.FolderName; // <Folder>/<Folder>.csproj → <Folder>.dll
+            if (!File.Exists(proj))
             {
                 Fail("Project not found",
-                    $"Could not locate Docklys.VolumeMixer\\VolumeMixer.csproj by walking up from:\n{AppContext.BaseDirectory}");
+                    $"Active module's csproj was on disk at scan time but is now missing:\n{proj}\n\n" +
+                    "Click ↺ Reload Module to refresh the catalog.");
                 return;
             }
 
-            var customModulesDir = FindDocklyCustomModulesDir();
+            // Auto-discovery → saved path → folder picker. Picker
+            // remembers its choice for next time so the dev only points
+            // at the Dockly install folder once.
+            var customModulesDir = await ResolveDocklyCustomModulesDirAsync(interactiveOnMiss: true);
             if (customModulesDir == null)
             {
                 Fail("Dockly not found",
-                    $"Could not locate Dockly\\CustomModules by walking up from:\n{AppContext.BaseDirectory}\n\nAlso searched running processes named 'Dockly' / 'Dockly.Desktop'.");
+                    "Could not locate Dockly's CustomModules folder.\n\n" +
+                    $"Auto-search started from:\n{AppContext.BaseDirectory}\n\n" +
+                    "Also probed running Dockly / Dockly.Desktop processes, " +
+                    "and the saved install path in %APPDATA%/Docklys/RunModule.json. " +
+                    "The folder picker was cancelled or pointed at the wrong folder.");
                 return;
             }
 
@@ -527,12 +540,12 @@ public partial class MainWindow : Window
                 return;
             }
 
-            // Find the freshest VolumeMixer.dll under bin\Debug
+            // Find the freshest <Folder>.dll under bin\Debug
             string? builtDll = null;
             var binDir = Path.Combine(projDir, "bin", "Debug");
             if (Directory.Exists(binDir))
             {
-                builtDll = Directory.GetFiles(binDir, "VolumeMixer.dll", SearchOption.AllDirectories)
+                builtDll = Directory.GetFiles(binDir, assemblyName + ".dll", SearchOption.AllDirectories)
                                     .OrderByDescending(File.GetLastWriteTimeUtc)
                                     .FirstOrDefault();
             }
@@ -540,37 +553,79 @@ public partial class MainWindow : Window
             if (builtDll == null || !File.Exists(builtDll))
             {
                 Fail("DLL not found",
-                    $"Build succeeded but no VolumeMixer.dll found under:\n{binDir}");
+                    $"Build succeeded but no {assemblyName}.dll found under:\n{binDir}");
                 return;
             }
 
-            var dest = Path.Combine(customModulesDir, "VolumeMixer.dll");
-            try
+            // Copy to EVERY Dockly CustomModules dir we can locate, not
+            // just one. Dockly's ModuleRegistry resolves the dir in
+            // priority order at startup (env var → BaseDirectory/CustomModules →
+            // assembly-location/CustomModules → walk-up → LocalAppData),
+            // so a Dockly that's been run once and a Dockly that's never
+            // been run end up reading from different folders. Copying to
+            // all of them is the only reliable way to make sure the
+            // module shows up regardless of state.
+            var targets = FindAllDocklyCustomModulesDirs();
+            if (!targets.Contains(customModulesDir, StringComparer.OrdinalIgnoreCase))
+                targets.Add(customModulesDir);
+            if (targets.Count == 0) targets.Add(customModulesDir);
+
+            var copied = new List<string>();
+            var failures = new List<(string Dest, string Reason)>();
+            foreach (var target in targets)
             {
-                File.Copy(builtDll, dest, overwrite: true);
-            }
-            catch (Exception copyEx)
-            {
-                // If Dockly is running it's almost certainly holding the DLL open.
-                // Offer a one-click "close & retry" instead of the generic error state.
-                if (IsDocklyRunning())
+                var dest = Path.Combine(target, assemblyName + ".dll");
+                try
                 {
-                    _docklyLocked = true;
-                    _lastBuildError = null;
-                    button.Content = "Close Docklys!";
-                    button.IsEnabled = true;
-                    ToolTip.SetTip(button, $"Dockly is running and is holding {Path.GetFileName(dest)} open.\nClick to terminate Dockly and retry the push.");
-                    return;
+                    Directory.CreateDirectory(target);
+                    File.Copy(builtDll, dest, overwrite: true);
+                    copied.Add(dest);
+                    Debug.WriteLine($"[Deploy] Copied {builtDll} -> {dest}");
                 }
+                catch (Exception copyEx)
+                {
+                    failures.Add((dest, $"{copyEx.GetType().Name}: {copyEx.Message}"));
+                    Debug.WriteLine($"[Deploy] Copy to {dest} failed: {copyEx.Message}");
+                }
+            }
 
-                Fail("Copy failed",
-                    $"Built DLL successfully but could not copy to Dockly.\n\nFrom: {builtDll}\nTo:   {dest}\n\n{copyEx.GetType().Name}: {copyEx.Message}");
+            // If we got zero successful copies and Dockly is running, the
+            // file-lock case is overwhelmingly likely — offer the same
+            // close-and-retry UX the original single-target path had.
+            if (copied.Count == 0 && IsDocklyRunning())
+            {
+                _docklyLocked = true;
+                _lastBuildError = null;
+                button.Content = "Close Docklys!";
+                button.IsEnabled = true;
+                ToolTip.SetTip(button,
+                    $"Dockly is running and is holding {assemblyName}.dll open in every target folder.\n" +
+                    "Click to terminate Dockly and retry the push.");
                 return;
             }
 
-            Debug.WriteLine($"[Deploy] Copied {builtDll} -> {dest}");
-            button.Content = "✓ Deployed";
-            ToolTip.SetTip(button, $"Built and copied to:\n{dest}");
+            if (copied.Count == 0)
+            {
+                var report = string.Join("\n  ",
+                    failures.Select(f => f.Dest + "\n    " + f.Reason));
+                Fail("Copy failed",
+                    "Built DLL successfully but every copy target failed:\n  " + report +
+                    "\n\nSource DLL: " + builtDll);
+                return;
+            }
+
+            // Some-or-all-succeeded path.
+            var copiedReport = string.Join("\n  ", copied);
+            button.Content = copied.Count == 1
+                ? "✓ Deployed"
+                : $"✓ Deployed ({copied.Count})";
+            var tipMsg = $"Built: {builtDll}\n\nCopied to:\n  {copiedReport}";
+            if (failures.Count > 0)
+            {
+                tipMsg += "\n\nFailed:\n  " + string.Join("\n  ",
+                    failures.Select(f => f.Dest + " — " + f.Reason));
+            }
+            ToolTip.SetTip(button, tipMsg);
             button.IsEnabled = true;
             await Task.Delay(1000);
 
@@ -596,30 +651,6 @@ public partial class MainWindow : Window
             if (button != null && _lastBuildError == null)
                 button.IsEnabled = true;
         }
-    }
-
-    // Auto-detect the VolumeMixer.csproj. Tries the current folder name
-    // ("VolumeMixer") first, then the legacy "Docklys.VolumeMixer" layout.
-    private string? FindVolumeMixerProject()
-    {
-        var dir = AppContext.BaseDirectory;
-        while (dir != null)
-        {
-            foreach (var rel in new[]
-                     {
-                         Path.Combine("VolumeMixer", "VolumeMixer.csproj"),
-                         Path.Combine("Docklys.VolumeMixer", "VolumeMixer.csproj"),
-                     })
-            {
-                var candidate = Path.Combine(dir, rel);
-                if (File.Exists(candidate)) return candidate;
-            }
-
-            var parent = Directory.GetParent(dir);
-            if (parent == null) break;
-            dir = parent.FullName;
-        }
-        return null;
     }
 
     // Auto-detect Dockly's CustomModules folder. Tries common layouts:
@@ -661,6 +692,15 @@ public partial class MainWindow : Window
             }
         }
         catch { }
+
+        // Last sync fallback: the install dir the dev previously picked
+        // via the folder picker (saved to %APPDATA%/Docklys/RunModule.json).
+        // ResolveDocklyCustomModulesDirAsync uses this too, but exposing
+        // it here lets the sync "Start Docklys" code path benefit
+        // without going through the async resolver.
+        var saved = SkinHost.LoadDocklyInstallDir();
+        var validated = ValidateAndResolveDocklyDir(saved);
+        if (validated != null) return validated;
 
         return null;
     }
@@ -815,41 +855,8 @@ public partial class MainWindow : Window
             SkinHost.SavePersistedSkinName(applied);
     }
 
-    private void OpenOutputModuleDllFolder_Click(object sender, RoutedEventArgs e)
+    private async void OpenOutputModuleDllFolder_Click(object sender, RoutedEventArgs e)
     {
-        // Locate DocklysEditor root (reuse same approach as OpenWebPFolder_Click)
-        var searchDir = AppContext.BaseDirectory;
-        string? editorRoot = null;
-        while (searchDir != null && !Path.GetFileName(searchDir).Equals("DocklysEditor", StringComparison.OrdinalIgnoreCase))
-        {
-            searchDir = Directory.GetParent(searchDir)?.FullName;
-        }
-
-        if (searchDir != null)
-            editorRoot = searchDir;
-
-        if (editorRoot == null)
-        {
-            Debug.WriteLine("Could not locate DocklysEditor root to open OutputModuleDLL folder");
-            return;
-        }
-
-        var outputDir = Path.Combine(editorRoot, "OutputModuleDLL");
-        Directory.CreateDirectory(outputDir);
-
-        try
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = $"\"{outputDir}\"",
-                UseShellExecute = true,
-            };
-            Process.Start(psi);
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Failed to open Explorer: {ex}");
-        }
+        await OpenEditorOutputFolder("OutputModuleDLL");
     }
 }

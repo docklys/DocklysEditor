@@ -137,37 +137,64 @@ public sealed class SkinHost
         return _activeSkinName;
     }
 
-    // Tiny JSON blob next to AppSettings so RunModule remembers the last
-    // skin choice across sessions independently of Dockly's main settings.
-    private sealed class PersistedState
+    // Tiny JSON blob next to AppSettings so RunModule remembers cross-
+    // session preferences independently of Dockly's main settings.
+    internal sealed class PersistedState
     {
         public string? SkinName { get; set; }
+        // Set by the Push-to-Docklys folder picker when the walk-up
+        // search can't locate Dockly automatically. Remembering it means
+        // the dev only picks once per machine.
+        public string? DocklyInstallDir { get; set; }
     }
 
-    public static string? LoadPersistedSkinName()
+    // Load-modify-write helpers, so saving one field doesn't wipe the others.
+    private static PersistedState LoadState()
     {
         try
         {
-            if (!File.Exists(PersistPath)) return null;
+            if (!File.Exists(PersistPath)) return new PersistedState();
             var json = File.ReadAllText(PersistPath);
-            return JsonSerializer.Deserialize<PersistedState>(json)?.SkinName;
+            return JsonSerializer.Deserialize<PersistedState>(json) ?? new PersistedState();
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SkinHost] Failed to read {PersistPath}: {ex.Message}");
+            return new PersistedState();
+        }
     }
 
-    public static void SavePersistedSkinName(string name)
+    private static void SaveState(PersistedState state)
     {
         try
         {
             var dir = Path.GetDirectoryName(PersistPath)!;
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
             File.WriteAllText(PersistPath,
-                JsonSerializer.Serialize(new PersistedState { SkinName = name },
+                JsonSerializer.Serialize(state,
                                          new JsonSerializerOptions { WriteIndented = true }));
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[SkinHost] Failed to persist skin name: {ex.Message}");
+            Console.WriteLine($"[SkinHost] Failed to write {PersistPath}: {ex.Message}");
         }
+    }
+
+    public static string? LoadPersistedSkinName() => LoadState().SkinName;
+
+    public static void SavePersistedSkinName(string name)
+    {
+        var s = LoadState();
+        s.SkinName = name;
+        SaveState(s);
+    }
+
+    public static string? LoadDocklyInstallDir() => LoadState().DocklyInstallDir;
+
+    public static void SaveDocklyInstallDir(string? path)
+    {
+        var s = LoadState();
+        s.DocklyInstallDir = path;
+        SaveState(s);
     }
 }
