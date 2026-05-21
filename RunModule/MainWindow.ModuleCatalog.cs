@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.Loader;
 using Avalonia.Controls;
 using Docklys.ModuleContracts;
 
@@ -12,24 +11,25 @@ namespace RunModule;
 
 // Runtime module catalog for the RunModule editor.
 //
-// Discovery walks the editor solution directory, finds every sibling
-// project folder that builds a module DLL, loads each one into the
-// default AssemblyLoadContext via LoadFromStream (so the file isn't
-// locked), and tracks the IModule UserControl types.
-//
-// Mirrors what Dockly.Modules.ModuleRegistry does on the host side, but
-// scans the *source tree* instead of a CustomModules folder — same idea,
-// dev-time variant.
+// Discovery walks the editor solution directory, finds every sibling project
+// folder that builds a module DLL, and loads each one into its own isolated,
+// collectable AssemblyLoadContext (ModuleLoadContext). Isolation means the
+// Reload button can unload the old context and load a freshly-built DLL
+// without restarting the editor. Two instances from the same context share
+// static members (e.g. VolumeMixer's GroupVolumeChanged sync event), which
+// is exactly what the dual-view feature needs.
 public partial class MainWindow
 {
     private sealed record ModuleEntry(
         string FolderName,
         string CsprojPath,
         string DllPath,
-        Type ModuleType);
+        Type ModuleType,
+        ModuleLoadContext LoadContext);
 
     private readonly List<ModuleEntry> _catalog = new();
     private int _currentIndex;
+    private bool _dualView;
 
     // Folders next to RunModule that are part of the editor infrastructure
     // and never carry a module — used to filter the source-tree scan.
@@ -49,6 +49,10 @@ public partial class MainWindow
 
     private void LoadCatalog()
     {
+        // Unload old isolated contexts before discarding entries — allows the
+        // GC to collect old module types and free any native resources they hold.
+        foreach (var entry in _catalog)
+            TryUnloadContext(entry.LoadContext);
         _catalog.Clear();
 
         var solutionDir = FindEditorSolutionDir();
@@ -74,26 +78,35 @@ public partial class MainWindow
                 continue;
             }
 
+            ModuleLoadContext? ctx = null;
             try
             {
-                var asm = LoadOrReuseAssembly(folderName, dll);
+                ctx = new ModuleLoadContext(dll);
+                var asm = ctx.LoadModule();
+                Type? found = null;
                 foreach (var t in SafeGetTypes(asm))
                 {
-                    if (IsModuleType(t))
-                    {
-                        _catalog.Add(new ModuleEntry(folderName, csproj, dll, t));
-                        break; // one IModule per project — match Dockly's convention
-                    }
+                    if (IsModuleType(t)) { found = t; break; }
+                }
+
+                if (found != null)
+                {
+                    _catalog.Add(new ModuleEntry(folderName, csproj, dll, found, ctx));
+                    ctx = null; // ownership transferred to catalog entry
                 }
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[Catalog] Failed to load {dll}: {ex.GetType().Name}: {ex.Message}");
             }
+            finally
+            {
+                // Only reached (non-null) when no IModule type was found or an exception occurred.
+                TryUnloadContext(ctx);
+            }
         }
 
-        // Stable, predictable ordering — alphabetical by folder name so
-        // arrow navigation feels deterministic across launches.
+        // Stable, predictable ordering — alphabetical by folder name.
         _catalog.Sort((a, b) => string.Compare(a.FolderName, b.FolderName, StringComparison.OrdinalIgnoreCase));
 
         if (_currentIndex >= _catalog.Count) _currentIndex = 0;
@@ -103,6 +116,10 @@ public partial class MainWindow
     // land on the named folder so the user sees the result immediately.
     private void ReloadCatalogAndSelect(string folderName)
     {
+        // Drop slot contents first so module instances are detached and the
+        // old isolated contexts can be fully collected after Unload().
+        ClearModuleSlots();
+
         LoadCatalog();
         var idx = _catalog.FindIndex(e =>
             string.Equals(e.FolderName, folderName, StringComparison.OrdinalIgnoreCase));
@@ -111,9 +128,18 @@ public partial class MainWindow
         UpdateScrollArrowVisibility();
     }
 
+    private void ClearModuleSlots()
+    {
+        var slot = this.FindControl<ContentControl>("ActiveModuleSlot");
+        if (slot != null) slot.Content = null;
+        var slot2 = this.FindControl<ContentControl>("SecondModuleSlot");
+        if (slot2 != null) slot2.Content = null;
+    }
+
     private void ShowModuleAtIndex(int index)
     {
         var slot = this.FindControl<ContentControl>("ActiveModuleSlot");
+        var slot2 = this.FindControl<ContentControl>("SecondModuleSlot");
         var nameLabel = this.FindControl<TextBlock>("ActiveModuleNameLabel");
         var renameBtn = this.FindControl<Button>("RenameButton");
         if (slot == null) return;
@@ -128,6 +154,7 @@ public partial class MainWindow
                 HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
             };
+            if (slot2 != null) { slot2.Content = null; slot2.IsVisible = false; }
             if (nameLabel != null) nameLabel.Text = "(no modules)";
             if (renameBtn != null) renameBtn.IsEnabled = false;
             return;
@@ -139,18 +166,31 @@ public partial class MainWindow
 
         try
         {
-            // New instance every cycle: matches the user's mental model of
-            // "what would my module look like on a fresh launch", which is
-            // the whole reason the carousel exists.
             var instance = (Control)Activator.CreateInstance(entry.ModuleType)!;
             slot.Content = instance;
 
             if (nameLabel != null) nameLabel.Text = entry.FolderName;
             if (renameBtn != null) renameBtn.IsEnabled = true;
 
-            // Re-apply zoom to the new content + re-fit the window. Both
-            // are no-ops if the slot or the zoom slider haven't been
-            // measured yet.
+            // Dual-view: show a second independent instance in slot2.
+            // Both instances come from the same isolated ALC, so they share
+            // static members (GroupVolumeChanged, etc.) and will sync.
+            if (slot2 != null)
+            {
+                if (_dualView)
+                {
+                    var instance2 = (Control)Activator.CreateInstance(entry.ModuleType)!;
+                    slot2.Content = instance2;
+                    slot2.IsVisible = true;
+                }
+                else
+                {
+                    slot2.Content = null;
+                    slot2.IsVisible = false;
+                }
+            }
+
+            // Re-apply zoom to the new content + re-fit the window.
             var zoom = this.FindControl<Avalonia.Controls.Slider>("ZoomSlider");
             if (zoom != null) ApplyZoomToActiveModule(zoom.Value);
 
@@ -171,9 +211,8 @@ public partial class MainWindow
     }
 
     // Pick the freshest DLL inside <folder>/bin/<Config>/<TFM>/<folder>.dll
-    // — preferring Debug (the editor's working configuration) but falling
-    // back to Release if that's all that exists.
-    private static string? FindFreshestModuleDll(string projectFolder, string folderName)
+    // — preferring Debug but falling back to Release if that's all that exists.
+    internal static string? FindFreshestModuleDll(string projectFolder, string folderName)
     {
         var binDir = Path.Combine(projectFolder, "bin");
         if (!Directory.Exists(binDir)) return null;
@@ -194,23 +233,11 @@ public partial class MainWindow
         }
     }
 
-    // Avoid loading the same assembly twice. Project-referenced modules
-    // are already in the default ALC (RunModule.csproj pulls them in),
-    // and re-reading them via LoadFromStream would create a duplicate
-    // Assembly with the same identity — modules then resolve to whichever
-    // copy of IModule was used at compile time, which breaks cross-assembly
-    // interface lookups.
-    private static Assembly LoadOrReuseAssembly(string expectedName, string dllPath)
+    private static void TryUnloadContext(ModuleLoadContext? ctx)
     {
-        var existing = AssemblyLoadContext.Default.Assemblies.FirstOrDefault(a =>
-            string.Equals(a.GetName().Name, expectedName, StringComparison.OrdinalIgnoreCase));
-        if (existing != null) return existing;
-
-        // Load via stream so the file on disk isn't locked — lets the user
-        // rebuild a module's csproj while the editor is still running.
-        var bytes = File.ReadAllBytes(dllPath);
-        using var ms = new MemoryStream(bytes);
-        return AssemblyLoadContext.Default.LoadFromStream(ms);
+        if (ctx == null) return;
+        try { ctx.Unload(); }
+        catch (Exception ex) { Debug.WriteLine($"[Catalog] ALC unload failed: {ex.Message}"); }
     }
 
     private static IEnumerable<Type> SafeGetTypes(Assembly asm)

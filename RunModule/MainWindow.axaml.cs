@@ -230,11 +230,27 @@ public partial class MainWindow : Window
         }
     }
 
-    // Pulled into a helper so ShowModuleAtIndex can re-apply the saved zoom
-    // when the slot's content changes.
+    // Re-apply zoom to all visible module slots. Called by ShowModuleAtIndex
+    // and by the slider handler so the window is always sized correctly.
     private void ApplyZoomToActiveModule(double percent)
     {
-        var slot = this.FindControl<ContentControl>("ActiveModuleSlot");
+        var slot1 = this.FindControl<ContentControl>("ActiveModuleSlot");
+        var slot2 = this.FindControl<ContentControl>("SecondModuleSlot");
+
+        ApplyZoomToSlot(slot1, percent);
+        if (_dualView && slot2?.IsVisible == true)
+            ApplyZoomToSlot(slot2, percent);
+
+        // Grow the window once with the combined footprint of all visible slots.
+        double w = ValidDimension(slot1?.Width);
+        if (_dualView && slot2?.IsVisible == true && !double.IsNaN(slot2.Width))
+            w += 16 + ValidDimension(slot2.Width); // 16 px gap between the two instances
+        GrowWindowToFitSlot(w, ValidDimension(slot1?.Height));
+    }
+
+    // Apply a zoom level to a single ContentControl slot without growing the window.
+    private static void ApplyZoomToSlot(ContentControl? slot, double percent)
+    {
         var control = slot?.Content as Control;
         if (slot == null || control == null) return;
 
@@ -242,10 +258,8 @@ public partial class MainWindow : Window
         control.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
         control.RenderTransform = new ScaleTransform(scale, scale);
 
-        // RenderTransform scales the *visual* but not the layout slot, so
-        // a scaled module overflows the slot's bounds and gets clipped by
-        // the row / window. Reserve the scaled footprint by sizing the
-        // slot itself — the centered, transformed content then has room.
+        // RenderTransform scales the *visual* but not the layout slot — size
+        // the slot to the scaled footprint so the content isn't clipped.
         control.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var desired = control.DesiredSize;
         if (desired.Width > 0 && desired.Height > 0)
@@ -253,12 +267,10 @@ public partial class MainWindow : Window
             slot.Width = desired.Width * scale;
             slot.Height = desired.Height * scale;
         }
-
-        // Grow the window if the scaled slot now needs more room than the
-        // current window provides. Never shrinks — the user shouldn't see
-        // the window get smaller when they drag zoom down.
-        GrowWindowToFitSlot(slot.Width, slot.Height);
     }
+
+    private static double ValidDimension(double? v) =>
+        v.HasValue && !double.IsNaN(v.Value) ? v.Value : 0;
 
     // Window grow helper used by zoom. Same chrome math as AutoSizeWindow,
     // but never repositions and never shrinks.
@@ -802,16 +814,84 @@ public partial class MainWindow : Window
 
     private async void ReloadModule_Click(object sender, RoutedEventArgs e)
     {
-        var slot = this.FindControl<ContentControl>("ActiveModuleSlot");
-        if (slot == null) return;
+        if (_catalog.Count == 0) return;
+        var oldEntry = _catalog[_currentIndex];
+        var projFolder = Path.GetDirectoryName(oldEntry.CsprojPath) ?? "";
 
-        // Detach → Unloaded fires; then re-instantiate from the catalog so
-        // any state inside the previous instance is dropped (closer to
-        // what an end user sees on app restart).
-        slot.Content = null;
+        // Drop all slot contents so module instances are detached before the
+        // old isolated context is unloaded — avoids use-after-free on module types.
+        ClearModuleSlots();
         await Task.Delay(150);
+
+        // Pick up the freshest DLL from disk (reflects any recent dotnet build).
+        var freshDll = FindFreshestModuleDll(projFolder, oldEntry.FolderName) ?? oldEntry.DllPath;
+
+        // Unload the old isolated context; the GC can now reclaim the old types.
+        TryUnloadContext(oldEntry.LoadContext);
+
+        ModuleLoadContext? newCtx = null;
+        Type? newType = null;
+        try
+        {
+            newCtx = new ModuleLoadContext(freshDll);
+            var asm = newCtx.LoadModule();
+            newType = SafeGetTypes(asm).FirstOrDefault(IsModuleType);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Reload] Load failed for {freshDll}: {ex.Message}");
+            TryUnloadContext(newCtx);
+            newCtx = null;
+        }
+
+        if (newType != null && newCtx != null)
+        {
+            _catalog[_currentIndex] = oldEntry with { DllPath = freshDll, ModuleType = newType, LoadContext = newCtx };
+        }
+        else
+        {
+            // Fallback: re-load from the last known DLL path so the slot isn't blank.
+            ModuleLoadContext? fallbackCtx = null;
+            try
+            {
+                fallbackCtx = new ModuleLoadContext(oldEntry.DllPath);
+                var fbAsm = fallbackCtx.LoadModule();
+                var fbType = SafeGetTypes(fbAsm).FirstOrDefault(IsModuleType);
+                if (fbType != null)
+                    _catalog[_currentIndex] = oldEntry with { ModuleType = fbType, LoadContext = fallbackCtx };
+                else
+                    TryUnloadContext(fallbackCtx);
+            }
+            catch { TryUnloadContext(fallbackCtx); }
+        }
+
         ShowModuleAtIndex(_currentIndex);
     }
+
+    private void ToggleDualView_Click(object sender, RoutedEventArgs e)
+    {
+        var btn = sender as Avalonia.Controls.Primitives.ToggleButton;
+        _dualView = btn?.IsChecked == true;
+        ShowModuleAtIndex(_currentIndex);
+    }
+
+    private async void OpenSavesFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var savesDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Docklys");
+        Directory.CreateDirectory(savesDir);
+        try
+        {
+            Process.Start(new ProcessStartInfo { FileName = savesDir, UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            await ShowMessageDialog("Couldn't open folder",
+                $"Failed to open {savesDir}\n\n{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
 
     private bool _suppressSkinSelectionChange;
 

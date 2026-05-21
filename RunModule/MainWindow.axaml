@@ -132,6 +132,48 @@
             <Setter Property="TextElement.Foreground" Value="#666666" />
         </Style>
 
+        <!-- Dual-view toggle: full set of states so the Fluent theme's blue
+             accent never bleeds through. Unchecked mirrors Button.toolbar;
+             checked is slightly brighter to read as "on". -->
+        <Style Selector="ToggleButton.toolbar">
+            <Setter Property="Height" Value="26" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="10,2" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#2A2A2A" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+        </Style>
+        <Style Selector="ToggleButton.toolbar /template/ ContentPresenter">
+            <Setter Property="Background" Value="#2A2A2A" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+        </Style>
+        <Style Selector="ToggleButton.toolbar:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#3D3D3D" />
+            <Setter Property="BorderBrush" Value="#777777" />
+            <Setter Property="TextElement.Foreground" Value="White" />
+        </Style>
+        <Style Selector="ToggleButton.toolbar:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#1A1A1A" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="TextElement.Foreground" Value="White" />
+        </Style>
+        <Style Selector="ToggleButton.toolbar:checked /template/ ContentPresenter">
+            <Setter Property="Background" Value="#5A5A5A" />
+            <Setter Property="BorderBrush" Value="#AAAAAA" />
+        </Style>
+        <Style Selector="ToggleButton.toolbar:checked:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#6A6A6A" />
+            <Setter Property="BorderBrush" Value="#BBBBBB" />
+        </Style>
+        <Style Selector="ToggleButton.toolbar:checked:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#444444" />
+            <Setter Property="BorderBrush" Value="#888888" />
+        </Style>
+
         <!-- The "primary" call-to-action: the deploy button. Lighter bg
              so it reads as the headline action without breaking the
              monochrome palette. -->
@@ -256,12 +298,12 @@
                     </Border>
                 </StackPanel>
 
-                <!-- Center: zoom -->
+                <!-- Center: zoom + dual-view toggle -->
                 <StackPanel Grid.Column="1"
                             Orientation="Horizontal"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            Spacing="6">
+                            Spacing="10">
                     <TextBlock Text="Zoom" Classes="caption"/>
                     <Slider Name="ZoomSlider"
                             Minimum="100"
@@ -276,6 +318,11 @@
                                Foreground="White"
                                VerticalAlignment="Center"
                                MinWidth="34"/>
+                    <ToggleButton Name="DualViewButton"
+                                  Classes="toolbar"
+                                  Content="⧉ Dual"
+                                  Click="ToggleDualView_Click"
+                                  ToolTip.Tip="Show two instances of the module side by side to preview cross-instance sync"/>
                 </StackPanel>
 
                 <!-- Right: skin -->
@@ -288,11 +335,17 @@
             </Grid>
         </Border>
 
-        <!-- ═════════ Module preview: one slot + cycle arrows ═════════ -->
+        <!-- ═════════ Module preview: one or two slots + cycle arrows ═════════ -->
         <Grid Grid.Row="1">
-            <ContentControl Name="ActiveModuleSlot"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center" />
+            <!-- Module slots: one visible by default, two when Dual is toggled. -->
+            <StackPanel Orientation="Horizontal"
+                        Spacing="16"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+                <ContentControl Name="ActiveModuleSlot" />
+                <ContentControl Name="SecondModuleSlot"
+                                IsVisible="False" />
+            </StackPanel>
             <Button Name="ScrollLeftButton"
                     Classes="scroll-arrow"
                     HorizontalAlignment="Left"
@@ -359,6 +412,10 @@
                             Content="📂 .dll"
                             Click="OpenOutputModuleDllFolder_Click"
                             ToolTip.Tip="Open the OutputModuleDLL folder"/>
+                    <Button Classes="toolbar"
+                            Content="📂 Saves"
+                            Click="OpenSavesFolder_Click"
+                            ToolTip.Tip="Open the module saves folder (%APPDATA%\Docklys)"/>
                 </StackPanel>
             </Grid>
         </Border>
