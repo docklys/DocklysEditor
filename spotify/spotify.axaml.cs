@@ -4,8 +4,10 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Docklys.ModuleContracts;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -78,12 +80,21 @@ namespace spotify
                 _topLevel.KeyUp   += OnTopLevelKeyUp;
             }
 
-            // The editor's ZoomSlider re-assigns `this.RenderTransform = new ScaleTransform(s, s)`.
-            // RenderTransform changes don't invalidate layout, so LayoutUpdated misses them — hook
-            // the property directly so the WebView's host HWND can follow the new scale.
+            // Native HWNDs ignore Avalonia render transforms. NativeControlHost positions
+            // the HWND inside its ArrangeOverride (which uses TransformToVisual → includes
+            // ancestor transforms). But ArrangeOverride only runs when *layout* is invalidated
+            // — assigning RenderTransform invalidates visuals, not layout, so the HWND keeps
+            // its previous (un-transformed) rect.
+            //
+            // Fix: when our RenderTransform changes (editor zoom slider) force an arrange
+            // pass on the WebView's subtree. That re-runs NativeControlHost.ArrangeOverride
+            // which calls TransformToVisual with the new scale, computing the correctly
+            // scaled physical rect and positioning the HWND via ShowInClient. We then push
+            // matching bounds into the WebView2 controller so its DComp surface fills the
+            // resized host HWND.
             _ownRenderTransformSub ??= this.GetObservable(RenderTransformProperty)
                 .Subscribe(new Avalonia.Reactive.AnonymousObserver<ITransform?>(_ =>
-                    Dispatcher.UIThread.Post(SyncWebViewHwndToVisualBounds, DispatcherPriority.Background)));
+                    Dispatcher.UIThread.Post(ForceWebViewRelayout, DispatcherPriority.Background)));
 
             if (!_webViewCreated)
             {
@@ -101,13 +112,33 @@ namespace spotify
                 _topLevel.KeyUp   -= OnTopLevelKeyUp;
                 _topLevel = null;
             }
-            _parentTransformSub?.Dispose();
-            _parentTransformSub = null;
-            _subscribedTranslate = null;
+            DisposeAncestorSubs();
             _ownRenderTransformSub?.Dispose();
             _ownRenderTransformSub = null;
+            _continuousSyncTimer?.Stop();
+            _continuousSyncTimer = null;
             _shiftDown = false;
             _webViewHwnd = IntPtr.Zero;
+        }
+
+        // AvaloniaWebView's NativeControlHost re-asserts controller.Bounds to its own
+        // (un-scaled) layout size on every layout/paint cycle, undoing our scaled set.
+        // Event-driven syncing (LayoutUpdated, RenderTransform observers) loses the race
+        // because AvaloniaWebView's handler runs after ours. Brute-force fix: poll at
+        // ~30 Hz and keep re-applying the SCALED HWND size + WebView2 Bounds. The visual
+        // result is the WebView following the editor's ScaleTransform, at the cost of a
+        // bit of CPU. Active only while the module is attached to the visual tree.
+        private DispatcherTimer? _continuousSyncTimer;
+        private void StartContinuousSync()
+        {
+            if (_continuousSyncTimer != null) return;
+            _continuousSyncTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(33) };
+            _continuousSyncTimer.Tick += (_, _) =>
+            {
+                SyncWebViewHwndToVisualBounds();
+                ApplyWebViewRoundedCorners();
+            };
+            _continuousSyncTimer.Start();
         }
 
         private void TryCreateWebView()
@@ -136,7 +167,8 @@ namespace spotify
                         SyncWebViewHwndToVisualBounds();
                         ApplyWebViewRoundedCorners();
                     }, DispatcherPriority.Background);
-                    SubscribeToParentRenderTransform();
+                    SubscribeToAncestorTransforms();
+                    StartContinuousSync();
 
                     try { urlProp?.SetValue(webView, new Uri(SpotifyUrl)); }
                     catch (Exception ex) { ShowError($"Failed to navigate to Spotify:\n{ex.InnerException?.Message ?? ex.Message}"); }
@@ -283,32 +315,89 @@ namespace spotify
         // WebView2 DComp surface stays glued to the Avalonia layout.
         private Control? _webView;
 
-        // Current parent-window TranslateTransform.X in physical pixels.
-        // Native HWNDs / DComp surfaces don't follow Avalonia render transforms, so
-        // when the host MainWindow slides via its RenderTransform we have to push
-        // this offset into the WebView2 controller's Bounds.X every frame.
-        private int _currentParentOffsetPx;
-        private IDisposable? _parentTransformSub;
-        private TranslateTransform? _subscribedTranslate;
         private IDisposable? _ownRenderTransformSub;
 
-        // Subscribe to the TopLevel's TranslateTransform.X so the WebView2 DComp surface
-        // follows the slide-in/out animation in lock-step. Mirrors how SettingsWindow
-        // calls ForceWebView2Repositioning(-progress) on every animation tick.
-        private void SubscribeToParentRenderTransform()
-        {
-            if (_subscribedTranslate != null) return;
-            var topLevel = TopLevel.GetTopLevel(this);
-            if (topLevel?.RenderTransform is not TranslateTransform translate) return;
+        // Subscriptions to every ancestor's RenderTransformProperty (catches transform
+        // replacement, e.g. the editor's StackPanel.RenderTransform = new TranslateTransform()
+        // when the user toggles slide preview). For each visual that currently holds a
+        // TranslateTransform, _ancestorInnerSubs has a nested subscription on its X/Y so
+        // tick-by-tick animation changes also fire OnAncestorTransformChanged.
+        private readonly List<IDisposable> _ancestorOuterSubs = new();
+        private readonly Dictionary<Visual, IDisposable> _ancestorInnerSubs = new();
+        private bool _syncPending;
 
-            _subscribedTranslate = translate;
-            _parentTransformSub = translate.GetObservable(TranslateTransform.XProperty)
-                .Subscribe(new Avalonia.Reactive.AnonymousObserver<double>(x =>
-                {
-                    var scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
-                    _currentParentOffsetPx = (int)(x * scaling);
-                    ForceWebView2Repositioning(_currentParentOffsetPx);
-                }));
+        // Walk from this UserControl up to the TopLevel and subscribe to every ancestor's
+        // RenderTransform so the WebView HWND follows whichever ancestor is sliding.
+        //
+        // In the main Docklys app the MainWindow itself (the TopLevel) holds the slide
+        // TranslateTransform; in the editor it's an intermediate StackPanel. Subscribing
+        // to every ancestor handles both, plus any future host that animates a different
+        // ancestor.
+        private void SubscribeToAncestorTransforms()
+        {
+            DisposeAncestorSubs();
+
+            var topLevel = TopLevel.GetTopLevel(this);
+            Visual? v = this;
+            while (v != null)
+            {
+                var visual = v;
+                _ancestorOuterSubs.Add(visual.GetObservable(Visual.RenderTransformProperty)
+                    .Subscribe(new Avalonia.Reactive.AnonymousObserver<ITransform?>(t =>
+                    {
+                        WireUpInnerTransform(visual, t);
+                        OnAncestorTransformChanged();
+                    })));
+
+                if (v == topLevel) break;
+                v = v.GetVisualParent();
+            }
+        }
+
+        private void WireUpInnerTransform(Visual visual, ITransform? transform)
+        {
+            if (_ancestorInnerSubs.TryGetValue(visual, out var oldSub))
+            {
+                oldSub.Dispose();
+                _ancestorInnerSubs.Remove(visual);
+            }
+
+            if (transform is TranslateTransform translate)
+            {
+                var xSub = translate.GetObservable(TranslateTransform.XProperty)
+                    .Subscribe(new Avalonia.Reactive.AnonymousObserver<double>(_ => OnAncestorTransformChanged()));
+                var ySub = translate.GetObservable(TranslateTransform.YProperty)
+                    .Subscribe(new Avalonia.Reactive.AnonymousObserver<double>(_ => OnAncestorTransformChanged()));
+                _ancestorInnerSubs[visual] = new CompositeDisposable(xSub, ySub);
+            }
+        }
+
+        // Coalesce repeated transform notifications (many fire per frame during a slide)
+        // into a single SyncWebViewHwndToVisualBounds call per dispatcher cycle.
+        private void OnAncestorTransformChanged()
+        {
+            if (_syncPending) return;
+            _syncPending = true;
+            Dispatcher.UIThread.Post(() =>
+            {
+                _syncPending = false;
+                SyncWebViewHwndToVisualBounds();
+            }, DispatcherPriority.Render);
+        }
+
+        private void DisposeAncestorSubs()
+        {
+            foreach (var sub in _ancestorOuterSubs) sub.Dispose();
+            _ancestorOuterSubs.Clear();
+            foreach (var sub in _ancestorInnerSubs.Values) sub.Dispose();
+            _ancestorInnerSubs.Clear();
+        }
+
+        private sealed class CompositeDisposable : IDisposable
+        {
+            private readonly IDisposable[] _items;
+            public CompositeDisposable(params IDisposable[] items) { _items = items; }
+            public void Dispose() { foreach (var d in _items) d.Dispose(); }
         }
 
         // The NativeControlHost HWND that Avalonia created for this instance's WebView.
@@ -439,6 +528,39 @@ namespace spotify
             }
         }
 
+        // Two-step relayout when a parent RenderTransform changes:
+        //   1. Walk up from the WebView invalidating arrange on every visual until
+        //      the TopLevel. That re-runs NativeControlHost.ArrangeOverride which
+        //      calls TransformToVisual(topLevel) → includes the new RenderTransform
+        //      → physical pixel rect → ShowInClient → HWND is moved/resized.
+        //   2. After the layout pass settles, run the SetWindowPos + controller-Bounds
+        //      sync as a belt-and-suspenders override (in case Avalonia's
+        //      NativeControlHost implementation skips ancestor transforms).
+        private void ForceWebViewRelayout()
+        {
+            if (_webView == null) return;
+
+            var topLevel = TopLevel.GetTopLevel(_webView);
+            if (topLevel == null) return;
+
+            Visual? v = _webView;
+            while (v != null && v != topLevel)
+            {
+                if (v is Layoutable l)
+                {
+                    l.InvalidateMeasure();
+                    l.InvalidateArrange();
+                }
+                v = v.GetVisualParent();
+            }
+            (topLevel as Layoutable)?.InvalidateArrange();
+            topLevel.UpdateLayout();
+
+            // Belt-and-suspenders: also drive the HWND + WebView2 controller bounds
+            // directly. Defer one frame so it runs after the just-triggered arrange pass.
+            Dispatcher.UIThread.Post(SyncWebViewHwndToVisualBounds, DispatcherPriority.Background);
+        }
+
         // Native HWNDs ignore Avalonia render transforms — when an ancestor applies a
         // ScaleTransform (editor zoom slider, host tile-resize) the WebView host HWND
         // stays at its un-scaled 230×350. Manually SetWindowPos it to the actual
@@ -465,18 +587,54 @@ namespace spotify
             int w = Math.Max(1, (int)(visualRect.Width  * scaling));
             int h = Math.Max(1, (int)(visualRect.Height * scaling));
 
+            // TransformToVisual walks up to (but does not include) the TopLevel's own
+            // RenderTransform. The main Docklys app slides the entire MainWindow via that
+            // transform, so we have to add it manually. In the editor it's an ancestor
+            // StackPanel sliding instead — that transform IS included by TransformToVisual,
+            // so this addition is a no-op (TopLevel.RenderTransform is null/identity there).
+            if (topLevel.RenderTransform is TranslateTransform topTransform)
+            {
+                x += (int)(topTransform.X * scaling);
+                y += (int)(topTransform.Y * scaling);
+            }
+            int targetX = x;
+
             try
             {
                 var ourHwnd = TryGetWebViewHwnd();
                 if (ourHwnd != IntPtr.Zero)
                 {
-                    // Target only this instance's HWND — essential in dual-view mode where
-                    // two WebView HWNDs coexist as children of the same editor window.
-                    SetWindowPos(ourHwnd, IntPtr.Zero, x, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+                     // Move the outermost native child window that is still a descendant
+                    // of the TopLevel. Some platform hosts wrap the real WebView HWND
+                    // inside additional HWNDs which carry visual chrome (rounded
+                    // frame). Moving only the innermost HWND leaves that outer frame
+                    // behind, producing misalignment when sliding/scaling.
+                    IntPtr outerHwnd = ourHwnd;
+                    try
+                    {
+                        while (true)
+                        {
+                            var parent = GetParent(outerHwnd);
+                            if (parent == IntPtr.Zero || parent == parentHwnd) break;
+                            outerHwnd = parent;
+                        }
+                    }
+                    catch { /* defensive: if GetParent fails, fall back to ourHwnd */ }
+
+                    // Position the outer window (the one whose origin is in TopLevel coords).
+                    SetWindowPos(outerHwnd, IntPtr.Zero, targetX, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+
+                    // If we moved a wrapper (outer != inner), ensure the inner WebView HWND
+                    // fills the moved container so the DComp surface is at 0,0..w,h.
+                    if (outerHwnd != ourHwnd)
+                    {
+                        // Size inner to 0,0 in the outer's client coords.
+                        SetWindowPos(ourHwnd, IntPtr.Zero, 0, 0, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+                        Console.WriteLine($"[Spotify] Positioned outerHwnd={outerHwnd} innerHwnd={ourHwnd} -> x={targetX},y={y},w={w},h={h}");
+                    }
                 }
                 else
                 {
-                    // Fallback for when the controller isn't initialised yet.
                     IntPtr child = FindWindowEx(parentHwnd, IntPtr.Zero, null, null);
                     while (child != IntPtr.Zero)
                     {
@@ -485,7 +643,7 @@ namespace spotify
                             int cw = r.Right - r.Left;
                             int ch = r.Bottom - r.Top;
                             if (cw > 50 && ch > 50)
-                                SetWindowPos(child, IntPtr.Zero, x, y, w, h,
+                                SetWindowPos(child, IntPtr.Zero, targetX, y, w, h,
                                     SWP_NOZORDER | SWP_NOACTIVATE);
                         }
                         child = FindWindowEx(parentHwnd, child, null, null);
@@ -497,8 +655,8 @@ namespace spotify
                 Console.WriteLine($"[Spotify] SyncWebViewHwndToVisualBounds failed: {ex.Message}");
             }
 
-            // Resize the WebView2 DComp surface inside the (now resized) host HWND.
-            ForceWebView2RepositioningWithSize(_currentParentOffsetPx, w, h);
+            // HWND is now at the correct slid position — DComp surface fills it from (0,0).
+            ForceWebView2RepositioningWithSize(0, w, h);
         }
 
         // Same as ForceWebView2Repositioning but with explicit width/height so we can
@@ -526,6 +684,7 @@ namespace spotify
                 var rect = new System.Drawing.Rectangle(physicalOffsetX, 0, w, h);
                 _controllerBoundsPropCache    ??= controllerType.GetProperty("Bounds");
                 _controllerBoundsPropCache?.SetValue(controller, rect);
+
                 _controllerIsVisiblePropCache ??= controllerType.GetProperty("IsVisible");
                 _controllerIsVisiblePropCache?.SetValue(controller, true);
                 _notifyParentMovedMethodCache ??= controllerType.GetMethod("NotifyParentWindowPositionChanged");
@@ -588,6 +747,9 @@ namespace spotify
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string? lpszClass, string? lpszWindow);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetParent(IntPtr hWnd);
 
         [DllImport("user32.dll")]
         private static extern bool GetClientRect(IntPtr hwnd, out RECT lpRect);
