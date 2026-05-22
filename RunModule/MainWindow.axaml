@@ -328,6 +328,11 @@
                                   Content="⧉ Dual"
                                   Click="ToggleDualView_Click"
                                   ToolTip.Tip="Show two instances of the module side by side to preview cross-instance sync"/>
+                    <ToggleButton Name="SlidePreviewButton"
+                                  Classes="toolbar"
+                                  Content="↔ Slide"
+                                  IsCheckedChanged="SlidePreviewButton_IsCheckedChanged"
+                                  ToolTip.Tip="Loop the Docklys slide-in/out animation on the module preview"/>
                 </StackPanel>
 
                 <!-- Right: skin -->
@@ -341,9 +346,10 @@
         </Border>
 
         <!-- ═════════ Module preview: one or two slots + cycle arrows ═════════ -->
-        <Grid Grid.Row="1">
+        <Grid Name="PreviewGrid" Grid.Row="1" ClipToBounds="True">
             <!-- Module slots: one visible by default, two when Dual is toggled. -->
-            <StackPanel Orientation="Horizontal"
+            <StackPanel Name="ModulePreviewPanel"
+                        Orientation="Horizontal"
                         Spacing="16"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center">
