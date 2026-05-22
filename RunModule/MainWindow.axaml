@@ -418,6 +418,10 @@
                             Click="OpenOutputModuleDllFolder_Click"
                             ToolTip.Tip="Open the OutputModuleDLL folder"/>
                     <Button Classes="toolbar"
+                            Content="📂 Docklys"
+                            Click="OpenDocklyModulesFolder_Click"
+                            ToolTip.Tip="Open the Dockly app's CustomModules folder"/>
+                    <Button Classes="toolbar"
                             Content="📂 Saves"
                             Click="OpenSavesFolder_Click"
                             ToolTip.Tip="Open the module saves folder (%APPDATA%\Docklys)"/>

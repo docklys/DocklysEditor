@@ -939,4 +939,19 @@ public partial class MainWindow : Window
     {
         await OpenEditorOutputFolder("OutputModuleDLL");
     }
+
+    private async void OpenDocklyModulesFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var path = await ResolveDocklyCustomModulesDirAsync(interactiveOnMiss: true);
+        if (path == null) return;
+        Directory.CreateDirectory(path);
+        try
+        {
+            Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            await ShowMessageDialog("Couldn't open folder", ex.Message);
+        }
+    }
 }

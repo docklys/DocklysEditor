@@ -199,19 +199,48 @@ public partial class MainWindow
         catch (Exception ex)
         {
             Debug.WriteLine($"[Catalog] Activator.CreateInstance({entry.ModuleType.FullName}) failed: {ex}");
-            slot.Content = new TextBlock
-            {
-                Text = $"Failed to instantiate {entry.FolderName}:\n{ex.GetType().Name}: {ex.Message}",
-                Foreground = Avalonia.Media.Brushes.IndianRed,
-                FontSize = 12,
-                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-            };
+            var errorText = BuildFullErrorText(entry.FolderName, ex);
+            slot.Content = BuildErrorPanel(errorText, slot);
             if (nameLabel != null) nameLabel.Text = entry.FolderName + " (failed)";
         }
     }
 
     // Pick the freshest DLL inside <folder>/bin/<Config>/<TFM>/<folder>.dll
     // — preferring Debug but falling back to Release if that's all that exists.
+    private static string BuildFullErrorText(string folderName, Exception ex)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Failed to instantiate {folderName}:");
+        var current = ex;
+        while (current != null)
+        {
+            sb.AppendLine($"{current.GetType().FullName}: {current.Message}");
+            current = current.InnerException;
+            if (current != null) sb.Append("  → ");
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    private static Avalonia.Controls.Control BuildErrorPanel(string errorText, ContentControl host)
+    {
+        var copyBtn = new Button { Content = "Copy error", Margin = new Avalonia.Thickness(0, 0, 0, 6) };
+        copyBtn.Click += async (_, _) =>
+        {
+            var clipboard = TopLevel.GetTopLevel(host)?.Clipboard;
+            if (clipboard != null) await clipboard.SetTextAsync(errorText);
+        };
+        var panel = new StackPanel { Margin = new Avalonia.Thickness(8) };
+        panel.Children.Add(copyBtn);
+        panel.Children.Add(new TextBlock
+        {
+            Text         = errorText,
+            Foreground   = Avalonia.Media.Brushes.IndianRed,
+            FontSize     = 12,
+            TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+        });
+        return panel;
+    }
+
     internal static string? FindFreshestModuleDll(string projectFolder, string folderName)
     {
         var binDir = Path.Combine(projectFolder, "bin");

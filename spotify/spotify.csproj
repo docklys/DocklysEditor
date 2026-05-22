@@ -12,6 +12,8 @@
     <ItemGroup>
       <PackageReference Include="Avalonia" Version="11.3.1" />
       <PackageReference Include="Avalonia.Desktop" Version="11.3.1" />
+      <!-- No WebView.Avalonia reference here — WebView is discovered at runtime
+           via reflection so this module loads cleanly in RunModule too. -->
     </ItemGroup>
     <ItemGroup>
       <ProjectReference Include="..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj" />

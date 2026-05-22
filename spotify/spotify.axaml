@@ -1,28 +1,109 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="spotify.spotify">
-    <!-- 1x1 tile footprint (110x110) — same size VolumeMixer uses. -->
+             x:Class="spotify.spotify"
+             x:Name="SpotifyRoot">
     <Border Background="{DynamicResource ColorModuleColor}"
-            Padding="8"
-            Width="470"
-            Height="590"
-            CornerRadius="10">
-        <StackPanel HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Spacing="6">
-            <TextBlock Text="spotify"
-                       FontSize="11"
-                       FontWeight="Bold"
-                       Foreground="{DynamicResource ColorModuleFont}"
-                       HorizontalAlignment="Center"
-                       TextAlignment="Center"
-                       TextWrapping="Wrap"/>
-            <Button Name="spotifyButton"
-                    Content="spotify"
-                    FontSize="10"
-                    Padding="8,2"
-                    Foreground="{DynamicResource ColorModuleFont}"
-                    HorizontalAlignment="Center"/>
-        </StackPanel>
+            Padding="0"
+            Width="230"
+            Height="350"
+            CornerRadius="10"
+            ClipToBounds="True">
+        <Grid>
+            <!-- WebView is created reflectively in OnAttachedToVisualTree to avoid
+                 a hard compile-time dependency on WebView.Avalonia. If the host does
+                 not have WebView loaded a fallback "Open in browser" button appears. -->
+            <Grid x:Name="WebViewContainer"
+                  HorizontalAlignment="Stretch"
+                  VerticalAlignment="Stretch" />
+
+            <!-- Invisible trigger zone in the bottom-right corner.
+                 When Shift is held and the cursor is here, the resize overlay shows. -->
+            <Border x:Name="ResizeTriggerZone"
+                    Width="44"
+                    Height="44"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Background="Transparent"
+                    ZIndex="10" />
+
+            <!-- Resize overlay: appears when Shift is held in the trigger zone -->
+            <Border x:Name="ResizeOverlay"
+                    IsVisible="False"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Margin="8"
+                    Background="#DD1A1A1A"
+                    CornerRadius="10"
+                    Padding="12,10"
+                    ZIndex="200">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="TILE SIZE"
+                               Foreground="#AAAAAA"
+                               FontSize="9"
+                               LetterSpacing="1"
+                               HorizontalAlignment="Center" />
+
+                    <!-- Width row -->
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                        <TextBlock Text="W"
+                                   Foreground="#888888"
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   Width="10" />
+                        <Button x:Name="WidthMinus"
+                                Content="−"
+                                Width="26" Height="26"
+                                FontSize="16"
+                                Padding="0"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center" />
+                        <TextBlock x:Name="WidthDisplay"
+                                   Width="22"
+                                   TextAlignment="Center"
+                                   Foreground="White"
+                                   FontSize="14"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center" />
+                        <Button x:Name="WidthPlus"
+                                Content="+"
+                                Width="26" Height="26"
+                                FontSize="16"
+                                Padding="0"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- Height row -->
+                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                        <TextBlock Text="H"
+                                   Foreground="#888888"
+                                   FontSize="10"
+                                   VerticalAlignment="Center"
+                                   Width="10" />
+                        <Button x:Name="HeightMinus"
+                                Content="−"
+                                Width="26" Height="26"
+                                FontSize="16"
+                                Padding="0"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center" />
+                        <TextBlock x:Name="HeightDisplay"
+                                   Width="22"
+                                   TextAlignment="Center"
+                                   Foreground="White"
+                                   FontSize="14"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center" />
+                        <Button x:Name="HeightPlus"
+                                Content="+"
+                                Width="26" Height="26"
+                                FontSize="16"
+                                Padding="0"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
     </Border>
 </UserControl>
