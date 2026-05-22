@@ -604,7 +604,7 @@ namespace spotify
                 var ourHwnd = TryGetWebViewHwnd();
                 if (ourHwnd != IntPtr.Zero)
                 {
-                     // Move the outermost native child window that is still a descendant
+                     // Move the outermost native child that is still a descendant
                     // of the TopLevel. Some platform hosts wrap the real WebView HWND
                     // inside additional HWNDs which carry visual chrome (rounded
                     // frame). Moving only the innermost HWND leaves that outer frame
@@ -656,47 +656,117 @@ namespace spotify
             }
 
             // HWND is now at the correct slid position — DComp surface fills it from (0,0).
-            ForceWebView2RepositioningWithSize(0, w, h);
+            // Compute visual scale and pass into ForceWebView2RepositioningWithSize; update that method to accept optional zoom and set controller.ZoomFactor via reflection when available.
+            double visualScale = 1.0;
+            try { if (local.Width > 0) visualScale = visualRect.Width / local.Width; } catch { }
+            ForceWebView2RepositioningWithSize(0, w, h, visualScale);
         }
 
         // Same as ForceWebView2Repositioning but with explicit width/height so we can
         // pass the SCALED size (accounting for ancestor ScaleTransform) instead of the
         // un-scaled local Bounds * RenderScaling that the base overload uses.
-        private bool ForceWebView2RepositioningWithSize(int physicalOffsetX, int w, int h)
-        {
-            if (_webView == null) return false;
-            try
-            {
-                _platformWebViewFieldCache ??= _webView.GetType().GetField(
-                    "_platformWebView", BindingFlags.NonPublic | BindingFlags.Instance);
-                if (_platformWebViewFieldCache == null) return false;
-                var platformWebView = _platformWebViewFieldCache.GetValue(_webView);
-                if (platformWebView == null) return false;
-                var platformType = platformWebView.GetType();
-                if (_coreControllerPropCache == null || _coreControllerPropCache.DeclaringType != platformType)
-                    _coreControllerPropCache = platformType.GetProperty("_coreWebView2Controller",
-                        BindingFlags.NonPublic | BindingFlags.Instance);
-                if (_coreControllerPropCache == null) return false;
-                var controller = _coreControllerPropCache.GetValue(platformWebView);
-                if (controller == null) return false;
-                var controllerType = controller.GetType();
+        private bool ForceWebView2RepositioningWithSize(int physicalOffsetX, int w, int h, double? zoom = null)
+         {
+             if (_webView == null) return false;
+             try
+             {
+                 _platformWebViewFieldCache ??= _webView.GetType().GetField(
+                     "_platformWebView", BindingFlags.NonPublic | BindingFlags.Instance);
+                 if (_platformWebViewFieldCache == null) return false;
+                 var platformWebView = _platformWebViewFieldCache.GetValue(_webView);
+                 if (platformWebView == null) return false;
+                 var platformType = platformWebView.GetType();
+                 if (_coreControllerPropCache == null || _coreControllerPropCache.DeclaringType != platformType)
+                     _coreControllerPropCache = platformType.GetProperty("_coreWebView2Controller",
+                         BindingFlags.NonPublic | BindingFlags.Instance);
+                 if (_coreControllerPropCache == null) return false;
+                 var controller = _coreControllerPropCache.GetValue(platformWebView);
+                 if (controller == null) return false;
+                 var controllerType = controller.GetType();
 
-                var rect = new System.Drawing.Rectangle(physicalOffsetX, 0, w, h);
-                _controllerBoundsPropCache    ??= controllerType.GetProperty("Bounds");
-                _controllerBoundsPropCache?.SetValue(controller, rect);
+                 var rect = new System.Drawing.Rectangle(physicalOffsetX, 0, w, h);
+                 _controllerBoundsPropCache    ??= controllerType.GetProperty("Bounds");
+                 _controllerBoundsPropCache?.SetValue(controller, rect);
 
-                _controllerIsVisiblePropCache ??= controllerType.GetProperty("IsVisible");
-                _controllerIsVisiblePropCache?.SetValue(controller, true);
-                _notifyParentMovedMethodCache ??= controllerType.GetMethod("NotifyParentWindowPositionChanged");
-                _notifyParentMovedMethodCache?.Invoke(controller, null);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Spotify] ForceWebView2RepositioningWithSize failed: {ex.Message}");
-                return false;
-            }
-        }
+                 _controllerIsVisiblePropCache ??= controllerType.GetProperty("IsVisible");
+                 _controllerIsVisiblePropCache?.SetValue(controller, true);
+                 _notifyParentMovedMethodCache ??= controllerType.GetMethod("NotifyParentWindowPositionChanged");
+                 _notifyParentMovedMethodCache?.Invoke(controller, null);
+
+                // If caller provided a visual zoom (e.g. editor ScaleTransform), apply it
+                // to the WebView2 controller's ZoomFactor if the property exists.
+                if (zoom.HasValue)
+                {
+                    try
+                    {
+                        // Clamp zoom to a sane range to avoid extreme values from bad transforms
+                        var zoomVal = Math.Max(0.25, Math.Min(4.0, zoom.Value));
+                        // First, try to get controller.CoreWebView2 and set its ZoomFactor property
+                        var coreProp = controllerType.GetProperty("CoreWebView2");
+                        if (coreProp != null)
+                        {
+                            var core = coreProp.GetValue(controller);
+                            if (core != null)
+                            {
+                                var coreType = core.GetType();
+                                var zoomProp = coreType.GetProperty("ZoomFactor");
+                                if (zoomProp != null && zoomProp.PropertyType == typeof(double))
+                                {
+                                    zoomProp.SetValue(core, zoomVal);
+                                }
+                                else
+                                {
+                                    var setZoomMethod = coreType.GetMethod("SetZoomFactor") ?? coreType.GetMethod("SetZoom");
+                                    if (setZoomMethod != null)
+                                    {
+                                        var ptypes = setZoomMethod.GetParameters();
+                                        if (ptypes.Length == 1)
+                                        {
+                                            var argType = ptypes[0].ParameterType;
+                                            var conv = Convert.ChangeType(zoomVal, argType);
+                                            setZoomMethod.Invoke(core, new object[] { conv });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Fallback: try on the controller object itself
+                            var zoomProp = controllerType.GetProperty("ZoomFactor");
+                            if (zoomProp != null && zoomProp.PropertyType == typeof(double))
+                            {
+                                zoomProp.SetValue(controller, zoomVal);
+                            }
+                            else
+                            {
+                                var setZoomMethod = controllerType.GetMethod("SetZoomFactor") ?? controllerType.GetMethod("SetZoom");
+                                if (setZoomMethod != null)
+                                {
+                                    var ptypes = setZoomMethod.GetParameters();
+                                    if (ptypes.Length == 1)
+                                    {
+                                        var argType = ptypes[0].ParameterType;
+                                        var conv = Convert.ChangeType(zoomVal, argType);
+                                        setZoomMethod.Invoke(controller, new object[] { conv });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[Spotify] Failed to set WebView2 ZoomFactor: {ex.Message}");
+                    }
+                }
+                 return true;
+             }
+             catch (Exception ex)
+             {
+                 Console.WriteLine($"[Spotify] ForceWebView2RepositioningWithSize failed: {ex.Message}");
+                 return false;
+             }
+         }
 
         // Returns the NativeControlHost HWND for this instance's WebView by reading
         // CoreWebView2Controller.ParentWindow via reflection. Cached after first lookup.
