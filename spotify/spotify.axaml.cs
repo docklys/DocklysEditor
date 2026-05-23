@@ -43,6 +43,157 @@ namespace spotify
             _currentW = width;
             _currentH = height;
             RefreshSizeDisplay();
+
+            Console.WriteLine($"[Spotify] SetTileSize called -> width={width},height={height}, webViewCreated={_webViewCreated}, webViewIsNull={_webView==null}, cachedHwnd={_webViewHwnd}");
+
+            // Host requested a tile-size change — aggressively force the WebView to
+            // relayout and resync immediately so the new size is visible without
+            // reloading the module.
+            try
+            {
+                // Clear caches so lookups and zoom reapplication run fresh.
+                _lastAppliedVisualZoom = double.NaN;
+                _webViewHwnd = IntPtr.Zero;
+
+                // Run on UI thread: if we already have a WebView, force relayout and
+                // run several follow-up syncs. If the WebView isn't created yet,
+                // try to create it and start a short retry timer that will apply
+                // the relayout as soon as the control appears.
+                Dispatcher.UIThread.Post(() =>
+                {
+                    try
+                    {
+                        Console.WriteLine("[Spotify] SetTileSize: performing relayout/resync attempt");
+                        if (_webView == null)
+                        {
+                            if (!_webViewCreated) TryCreateWebView();
+
+                            // Start a short retry timer that will attempt to apply the
+                            // relayout as soon as the WebView becomes available.
+                            var retry = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+                            int attempts = 0;
+                            retry.Tick += (_, _) =>
+                            {
+                                attempts++;
+                                if (_webView != null)
+                                {
+                                    retry.Stop();
+                                    try
+                                    {
+                                        Console.WriteLine("[Spotify] Retry: webview appeared, forcing relayout");
+                                        ForceWebViewRelayout();
+                                        SyncWebViewHwndToVisualBounds();
+                                        ApplyWebViewRoundedCorners();
+                                        StartContinuousSync();
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.WriteLine($"[Spotify] Retry relayout failed: {ex.Message}");
+                                    }
+                                }
+                                else if (attempts > 12) // ~1.2s timeout
+                                {
+                                    retry.Stop();
+                                }
+                            };
+                            retry.Start();
+                        }
+                        else
+                        {
+                            Console.WriteLine("[Spotify] SetTileSize: webView exists, forcing immediate relayout and sync");
+                            // Immediate aggressive relayout + multiple follow-ups so
+                            // platform races are less likely to leave the HWND stale.
+                            ForceWebViewRelayout();
+                            SyncWebViewHwndToVisualBounds();
+                            ApplyWebViewRoundedCorners();
+                            StartContinuousSync();
+
+                            // Two follow-up nudges: one in Background and one when idle.
+                            Dispatcher.UIThread.Post(() => { try { SyncWebViewHwndToVisualBounds(); ApplyWebViewRoundedCorners(); } catch { } }, DispatcherPriority.Background);
+                            Dispatcher.UIThread.Post(() => { try { SyncWebViewHwndToVisualBounds(); ApplyWebViewRoundedCorners(); } catch { } }, DispatcherPriority.ContextIdle);
+
+                            // Start a short polling timer that ensures we retry until the
+                            // WebView's measured bounds reflect the new tile size. This
+                            // catches cases where layout and platform HWND creation are
+                            // delayed and our one-shot nudges lost the race.
+                            var poll = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+                            int pollAttempts = 0;
+                            double lastW = _webView.Bounds.Width;
+                            double lastH = _webView.Bounds.Height;
+                            poll.Tick += (_, _) =>
+                            {
+                                pollAttempts++;
+                                try
+                                {
+                                    // Force a relayout and sync each tick.
+                                    ForceWebViewRelayout();
+                                    SyncWebViewHwndToVisualBounds();
+                                    ApplyWebViewRoundedCorners();
+
+                                    // If the WebView reports changed bounds or we discovered an HWND,
+                                    // stop polling early.
+                                    var curW = _webView?.Bounds.Width ?? 0.0;
+                                    var curH = _webView?.Bounds.Height ?? 0.0;
+                                    var hw = TryGetWebViewHwnd();
+                                    if ((Math.Abs(curW - lastW) > 0.5 || Math.Abs(curH - lastH) > 0.5) || hw != IntPtr.Zero)
+                                    {
+                                        Console.WriteLine($"[Spotify] Poll success: bounds={curW}x{curH}, hwnd={hw}");
+                                        poll.Stop();
+                                        return;
+                                    }
+                                    if (pollAttempts > 20) // ~2s
+                                    {
+                                        Console.WriteLine("[Spotify] Poll timeout: giving up after attempts");
+                                        poll.Stop();
+                                    }
+                                }
+                                catch { if (pollAttempts > 20) poll.Stop(); }
+                            };
+                            poll.Start();
+
+                            // Immediate brute-force fallback: enumerate top-level child HWNDs
+                            // and set their bounds to our target rect. This will forcibly
+                            // resize any native child (including WebView instances) even if
+                            // the controller hasn't been exposed via reflection yet.
+                            try
+                            {
+                                var top = TopLevel.GetTopLevel(this);
+                                var parentHwnd = top?.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+                                if (parentHwnd != IntPtr.Zero)
+                                {
+                                    var transform = (_webView ?? (Control)this).TransformToVisual(top);
+                                    var local = (_webView ?? (Control)this).Bounds;
+                                    var composed = transform.HasValue ? transform.Value : Matrix.Identity;
+                                    if (top.RenderTransform != null) composed = top.RenderTransform.Value * composed;
+                                    var vr = new Rect(0,0, local.Width, local.Height).TransformToAABB(composed);
+                                    var scaling = top.RenderScaling;
+                                    int tx = (int)(vr.X * scaling);
+                                    int ty = (int)(vr.Y * scaling);
+                                    int tw = Math.Max(1, (int)(vr.Width * scaling));
+                                    int th = Math.Max(1, (int)(vr.Height * scaling));
+                                    Console.WriteLine($"[Spotify] Brute-force SetTileSize fallback: enumerating children of parentHwnd={parentHwnd} -> target {tx}x{ty}+{tw}x{th}");
+                                    IntPtr child = FindWindowEx(parentHwnd, IntPtr.Zero, null, null);
+                                    while (child != IntPtr.Zero)
+                                    {
+                                        try
+                                        {
+                                            SetWindowPos(child, IntPtr.Zero, tx, ty, tw, th, SWP_NOZORDER | SWP_NOACTIVATE);
+                                        }
+                                        catch { }
+                                        child = FindWindowEx(parentHwnd, child, null, null);
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"[Spotify] Brute-force SetTileSize fallback failed: {ex.Message}");
+                            }
+                         }
+                     }
+                     catch { }
+                 }, DispatcherPriority.Background);
+             }
+             catch { }
         }
 
         private int _currentW = 2;
@@ -96,6 +247,18 @@ namespace spotify
                 .Subscribe(new Avalonia.Reactive.AnonymousObserver<ITransform?>(_ =>
                     Dispatcher.UIThread.Post(ForceWebViewRelayout, DispatcherPriority.Background)));
 
+            // Observe our own Bounds so we can react when the host changes the tile
+            // size (some hosts update measure/arrange without changing RenderTransform).
+            _boundsSub ??= this.GetObservable(BoundsProperty)
+                .Subscribe(new Avalonia.Reactive.AnonymousObserver<Rect>(_ =>
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        try { SyncWebViewHwndToVisualBounds(); ApplyWebViewRoundedCorners(); }
+                        catch { }
+                    }, DispatcherPriority.Background);
+                }));
+
             if (!_webViewCreated)
             {
                 _webViewCreated = true;
@@ -115,6 +278,10 @@ namespace spotify
             DisposeAncestorSubs();
             _ownRenderTransformSub?.Dispose();
             _ownRenderTransformSub = null;
+            _boundsSub?.Dispose();
+            _boundsSub = null;
+            _webViewBoundsSub?.Dispose();
+            _webViewBoundsSub = null;
             _continuousSyncTimer?.Stop();
             _continuousSyncTimer = null;
             _shiftDown = false;
@@ -157,6 +324,19 @@ namespace spotify
                 webView.VerticalAlignment   = VerticalAlignment.Stretch;
                 _webView = webView;
 
+                // Also observe the created WebView's Bounds — LayoutUpdated might not
+                // fire in all races, but Bounds observable reliably signals measured size changes.
+                _webViewBoundsSub?.Dispose();
+                _webViewBoundsSub = webView.GetObservable(BoundsProperty)
+                    .Subscribe(new Avalonia.Reactive.AnonymousObserver<Rect>(_ =>
+                    {
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            try { SyncWebViewHwndToVisualBounds(); ApplyWebViewRoundedCorners(); }
+                            catch { }
+                        }, DispatcherPriority.Background);
+                    }));
+
                 var urlProp = webViewType.GetProperty("Url",
                     BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
 
@@ -172,6 +352,45 @@ namespace spotify
 
                     try { urlProp?.SetValue(webView, new Uri(SpotifyUrl)); }
                     catch (Exception ex) { ShowError($"Failed to navigate to Spotify:\n{ex.InnerException?.Message ?? ex.Message}"); }
+
+                    // Extra: ensure WebView2 controller receives initial bounds + zoom after load.
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        try
+                        {
+                            if (_webView == null) return;
+                            var top = TopLevel.GetTopLevel(_webView);
+                            if (top == null) return;
+                            var transform = _webView.TransformToVisual(top);
+                            if (!transform.HasValue) return;
+                            var local = _webView.Bounds;
+                            if (local.Width <= 0 || local.Height <= 0) return;
+                            var composed = transform.Value;
+                            if (top.RenderTransform != null) composed = top.RenderTransform.Value * composed;
+                            var visualRect = new Rect(0, 0, local.Width, local.Height).TransformToAABB(composed);
+                            var scaling = top.RenderScaling;
+                            int w = Math.Max(1, (int)(visualRect.Width * scaling));
+                            int h = Math.Max(1, (int)(visualRect.Height * scaling));
+                            // Compute visual scale similar to SyncWebViewHwndToVisualBounds
+                            double visualScale = 1.0;
+                            try
+                            {
+                                var m = composed;
+                                var p0 = m.Transform(new Point(0, 0));
+                                var p1 = m.Transform(new Point(1, 0));
+                                var p2 = m.Transform(new Point(0, 1));
+                                double scaleX = Math.Sqrt(Math.Pow(p1.X - p0.X, 2) + Math.Pow(p1.Y - p0.Y, 2));
+                                double scaleY = Math.Sqrt(Math.Pow(p2.X - p0.X, 2) + Math.Pow(p2.Y - p0.Y, 2));
+                                if (double.IsFinite(scaleX) && double.IsFinite(scaleY) && scaleX > 0 && scaleY > 0)
+                                    visualScale = (scaleX + scaleY) / 2.0;
+                            }
+                            catch { visualScale = 1.0; }
+
+                            // Force controller reposition + zoom set
+                            ForceWebView2RepositioningWithSize(0, w, h, visualScale);
+                        }
+                        catch { }
+                    }, DispatcherPriority.Background);
                 };
 
                 // Re-apply the rounded-corner clip + HWND sizing when the WebView resizes.
@@ -316,6 +535,21 @@ namespace spotify
         private Control? _webView;
 
         private IDisposable? _ownRenderTransformSub;
+        private IDisposable? _boundsSub;
+        private IDisposable? _webViewBoundsSub;
+
+        // Reflection/property caches used when driving WebView2 controller via reflection
+        private System.Reflection.FieldInfo? _platformWebViewFieldCache;
+        private System.Reflection.PropertyInfo? _coreControllerPropCache;
+        private System.Reflection.PropertyInfo? _controllerBoundsPropCache;
+        private System.Reflection.PropertyInfo? _controllerIsVisiblePropCache;
+        private System.Reflection.MethodInfo? _notifyParentMovedMethodCache;
+
+        // Win32 SetWindowPos and flags
+        private const int SWP_NOZORDER = 0x0004;
+        private const int SWP_NOACTIVATE = 0x0010;
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
         // Subscriptions to every ancestor's RenderTransformProperty (catches transform
         // replacement, e.g. the editor's StackPanel.RenderTransform = new TranslateTransform()
@@ -405,14 +639,56 @@ namespace spotify
         // operations (SetWindowPos, SetWindowRgn) target only this instance's HWND
         // instead of all children of the editor window (which breaks dual-view).
         private IntPtr _webViewHwnd = IntPtr.Zero;
+        // Cache last applied visual zoom to avoid redundant sets and reduce races.
+        // Start as NaN so the first set always applies.
+        private double _lastAppliedVisualZoom = double.NaN;
+        // Pending zoom retry state when the controller isn't ready yet.
+        private DispatcherTimer? _zoomRetryTimer;
+        private double? _pendingZoomVal;
+        private int _pendingZoomW;
+        private int _pendingZoomH;
+        private int _pendingZoomAttempts;
 
-        // Cached reflection handles for ForceWebView2Repositioning — looked up once.
-        private static FieldInfo?    _platformWebViewFieldCache;
-        private static PropertyInfo? _coreControllerPropCache;
-        private static PropertyInfo? _controllerBoundsPropCache;
-        private static PropertyInfo? _controllerIsVisiblePropCache;
-        private static MethodInfo?   _notifyParentMovedMethodCache;
-        private static PropertyInfo? _controllerParentWindowPropCache;
+        private void StartZoomRetry(double zoomVal, int w, int h)
+        {
+            _pendingZoomVal = zoomVal;
+            _pendingZoomW = w;
+            _pendingZoomH = h;
+            _pendingZoomAttempts = 0;
+            if (_zoomRetryTimer == null)
+            {
+                _zoomRetryTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+                _zoomRetryTimer.Tick += (_, _) =>
+                {
+                    _pendingZoomAttempts++;
+                    if (_pendingZoomAttempts > 10)
+                    {
+                        StopZoomRetry();
+                        return;
+                    }
+                    // Try to re-apply with the latest pending values
+                    try
+                    {
+                        if (_pendingZoomVal.HasValue)
+                            ForceWebView2RepositioningWithSize(0, _pendingZoomW, _pendingZoomH, _pendingZoomVal);
+                    }
+                    catch { }
+                };
+            }
+            _zoomRetryTimer.Start();
+        }
+
+        private void StopZoomRetry()
+        {
+            try
+            {
+                _zoomRetryTimer?.Stop();
+                _zoomRetryTimer = null;
+            }
+            catch { }
+            _pendingZoomVal = null;
+            _pendingZoomAttempts = 0;
+        }
 
         // Directly drives the WebView2 CoreWebView2Controller's Bounds and pings
         // NotifyParentWindowPositionChanged, bypassing Avalonia's NativeControlHost
@@ -427,21 +703,68 @@ namespace spotify
             {
                 _platformWebViewFieldCache ??= _webView.GetType().GetField(
                     "_platformWebView", BindingFlags.NonPublic | BindingFlags.Instance);
-                if (_platformWebViewFieldCache == null) return false;
+                // Heuristic: if the standard field name isn't present, search for a field
+                // whose type name contains 'Platform' or 'PlatformWebView' or which
+                // exposes a _coreWebView2Controller property.
+                if (_platformWebViewFieldCache == null)
+                {
+                    foreach (var f in _webView.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public))
+                    {
+                        try
+                        {
+                            var ft = f.FieldType;
+                            if (ft.Name.IndexOf("Platform", StringComparison.OrdinalIgnoreCase) >= 0 || ft.Name.IndexOf("AvaloniaWebView", StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                // quick check: does this field's type have a _coreWebView2Controller property?
+                                var p = ft.GetProperty("_coreWebView2Controller", BindingFlags.NonPublic | BindingFlags.Instance);
+                                if (p != null)
+                                {
+                                    _platformWebViewFieldCache = f;
+                                    break;
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+                if (_platformWebViewFieldCache == null) return IntPtr.Zero;
 
                 var platformWebView = _platformWebViewFieldCache.GetValue(_webView);
-                if (platformWebView == null) return false;
+                if (platformWebView == null) return IntPtr.Zero;
 
                 var platformType = platformWebView.GetType();
                 if (_coreControllerPropCache == null || _coreControllerPropCache.DeclaringType != platformType)
                 {
                     _coreControllerPropCache = platformType.GetProperty(
                         "_coreWebView2Controller", BindingFlags.NonPublic | BindingFlags.Instance);
+                    // Heuristic: if not found, look for any property whose type name contains 'CoreWebView2Controller' or name contains 'core' and 'controller'
+                    if (_coreControllerPropCache == null)
+                    {
+                        foreach (var pp in platformType.GetProperties(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public))
+                        {
+                            try
+                            {
+                                var pt = pp.PropertyType;
+                                if (pt != null && pt.Name.IndexOf("CoreWebView2Controller", StringComparison.OrdinalIgnoreCase) >= 0)
+                                {
+                                    _coreControllerPropCache = pp;
+                                    break;
+                                }
+                                var nm = pp.Name.ToLowerInvariant();
+                                if (nm.Contains("core") && nm.Contains("controller"))
+                                {
+                                    _coreControllerPropCache = pp;
+                                    break;
+                                }
+                            }
+                            catch { }
+                        }
+                    }
                 }
-                if (_coreControllerPropCache == null) return false;
+                if (_coreControllerPropCache == null) return IntPtr.Zero;
 
                 var controller = _coreControllerPropCache.GetValue(platformWebView);
-                if (controller == null) return false;
+                if (controller == null) return IntPtr.Zero;
 
                 var controllerType = controller.GetType();
                 var bounds = _webView.Bounds;
@@ -538,6 +861,7 @@ namespace spotify
         //      NativeControlHost implementation skips ancestor transforms).
         private void ForceWebViewRelayout()
         {
+            Console.WriteLine("[Spotify] ForceWebViewRelayout() called");
             if (_webView == null) return;
 
             var topLevel = TopLevel.GetTopLevel(_webView);
@@ -580,35 +904,40 @@ namespace spotify
             var local = _webView.Bounds;
             if (local.Width <= 0 || local.Height <= 0) return;
 
-            var visualRect = new Rect(0, 0, local.Width, local.Height).TransformToAABB(transform.Value);
-            var scaling    = topLevel.RenderScaling;
+            Console.WriteLine($"[Spotify] SyncWebViewHwndToVisualBounds: localBounds={local.Width}x{local.Height}");
+
+            // TransformToVisual returns local->topLevel excluding the TopLevel's own RenderTransform.
+            // Compose the TopLevel.RenderTransform (if present) so we measure the final transformed
+            // visual rect and scale consistently (handles ScaleTransform, TranslateTransform, Matrix, etc.).
+            var composedMatrix = transform.Value;
+            if (topLevel.RenderTransform != null)
+            {
+                try
+                {
+                    // combined = topLevel.RenderTransform * transform
+                    composedMatrix = topLevel.RenderTransform.Value * transform.Value;
+                }
+                catch { composedMatrix = transform.Value; }
+            }
+
+            var visualRect = new Rect(0, 0, local.Width, local.Height).TransformToAABB(composedMatrix);
+            var scaling = topLevel.RenderScaling;
             int x = (int)(visualRect.X * scaling);
             int y = (int)(visualRect.Y * scaling);
-            int w = Math.Max(1, (int)(visualRect.Width  * scaling));
+            int w = Math.Max(1, (int)(visualRect.Width * scaling));
             int h = Math.Max(1, (int)(visualRect.Height * scaling));
 
-            // TransformToVisual walks up to (but does not include) the TopLevel's own
-            // RenderTransform. The main Docklys app slides the entire MainWindow via that
-            // transform, so we have to add it manually. In the editor it's an ancestor
-            // StackPanel sliding instead — that transform IS included by TransformToVisual,
-            // so this addition is a no-op (TopLevel.RenderTransform is null/identity there).
-            if (topLevel.RenderTransform is TranslateTransform topTransform)
-            {
-                x += (int)(topTransform.X * scaling);
-                y += (int)(topTransform.Y * scaling);
-            }
             int targetX = x;
 
             try
             {
                 var ourHwnd = TryGetWebViewHwnd();
+                Console.WriteLine($"[Spotify] TryGetWebViewHwnd returned {ourHwnd}");
+                Console.WriteLine($"[Spotify] visualRect (pre-scale)={visualRect} renderScaling={scaling} -> target x={x},y={y},w={w},h={h}");
+
                 if (ourHwnd != IntPtr.Zero)
                 {
-                     // Move the outermost native child that is still a descendant
-                    // of the TopLevel. Some platform hosts wrap the real WebView HWND
-                    // inside additional HWNDs which carry visual chrome (rounded
-                    // frame). Moving only the innermost HWND leaves that outer frame
-                    // behind, producing misalignment when sliding/scaling.
+                    // Move the outermost native child that is still a descendant of the TopLevel.
                     IntPtr outerHwnd = ourHwnd;
                     try
                     {
@@ -619,7 +948,7 @@ namespace spotify
                             outerHwnd = parent;
                         }
                     }
-                    catch { /* defensive: if GetParent fails, fall back to ourHwnd */ }
+                    catch { /* ignore */ }
 
                     // Position the outer window (the one whose origin is in TopLevel coords).
                     SetWindowPos(outerHwnd, IntPtr.Zero, targetX, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
@@ -628,7 +957,6 @@ namespace spotify
                     // fills the moved container so the DComp surface is at 0,0..w,h.
                     if (outerHwnd != ourHwnd)
                     {
-                        // Size inner to 0,0 in the outer's client coords.
                         SetWindowPos(ourHwnd, IntPtr.Zero, 0, 0, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
                         Console.WriteLine($"[Spotify] Positioned outerHwnd={outerHwnd} innerHwnd={ourHwnd} -> x={targetX},y={y},w={w},h={h}");
                     }
@@ -642,6 +970,7 @@ namespace spotify
                         {
                             int cw = r.Right - r.Left;
                             int ch = r.Bottom - r.Top;
+                            Console.WriteLine($"[Spotify] Enumerating child HWND={child} client={cw}x{ch}");
                             if (cw > 50 && ch > 50)
                                 SetWindowPos(child, IntPtr.Zero, targetX, y, w, h,
                                     SWP_NOZORDER | SWP_NOACTIVATE);
@@ -656,9 +985,25 @@ namespace spotify
             }
 
             // HWND is now at the correct slid position — DComp surface fills it from (0,0).
-            // Compute visual scale and pass into ForceWebView2RepositioningWithSize; update that method to accept optional zoom and set controller.ZoomFactor via reflection when available.
+            // Compute visual scale using the transform matrix to be robust to rotations/shear.
             double visualScale = 1.0;
-            try { if (local.Width > 0) visualScale = visualRect.Width / local.Width; } catch { }
+            try
+            {
+                // Use the composed matrix (local -> topLevel including TopLevel.RenderTransform)
+                var m = composedMatrix;
+                 // Transform unit vectors to measure scale along X and Y
+                 var p0 = m.Transform(new Point(0, 0));
+                 var p1 = m.Transform(new Point(1, 0));
+                 var p2 = m.Transform(new Point(0, 1));
+                 double scaleX = Math.Sqrt(Math.Pow(p1.X - p0.X, 2) + Math.Pow(p1.Y - p0.Y, 2));
+                 double scaleY = Math.Sqrt(Math.Pow(p2.X - p0.X, 2) + Math.Pow(p2.Y - p0.Y, 2));
+                 if (double.IsFinite(scaleX) && double.IsFinite(scaleY) && scaleX > 0 && scaleY > 0)
+                     visualScale = (scaleX + scaleY) / 2.0;
+            }
+            catch { visualScale = 1.0; }
+
+            Console.WriteLine($"[Spotify] computed visualScale={visualScale}");
+
             ForceWebView2RepositioningWithSize(0, w, h, visualScale);
         }
 
@@ -672,6 +1017,30 @@ namespace spotify
              {
                  _platformWebViewFieldCache ??= _webView.GetType().GetField(
                      "_platformWebView", BindingFlags.NonPublic | BindingFlags.Instance);
+                 // Heuristic: if the standard field name isn't present, search for a field
+                 // whose type name contains 'Platform' or 'PlatformWebView' or which
+                 // exposes a _coreWebView2Controller property.
+                 if (_platformWebViewFieldCache == null)
+                 {
+                     foreach (var f in _webView.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public))
+                     {
+                         try
+                         {
+                             var ft = f.FieldType;
+                             if (ft.Name.IndexOf("Platform", StringComparison.OrdinalIgnoreCase) >= 0 || ft.Name.IndexOf("AvaloniaWebView", StringComparison.OrdinalIgnoreCase) >= 0)
+                             {
+                                 // quick check: does this field's type have a _coreWebView2Controller property?
+                                 var p = ft.GetProperty("_coreWebView2Controller", BindingFlags.NonPublic | BindingFlags.Instance);
+                                 if (p != null)
+                                 {
+                                     _platformWebViewFieldCache = f;
+                                     break;
+                                 }
+                             }
+                         }
+                         catch { }
+                     }
+                 }
                  if (_platformWebViewFieldCache == null) return false;
                  var platformWebView = _platformWebViewFieldCache.GetValue(_webView);
                  if (platformWebView == null) return false;
@@ -685,6 +1054,7 @@ namespace spotify
                  var controllerType = controller.GetType();
 
                  var rect = new System.Drawing.Rectangle(physicalOffsetX, 0, w, h);
+                Console.WriteLine($"[Spotify] ForceWebView2RepositioningWithSize rect={{X={rect.X},Y={rect.Y},W={rect.Width},H={rect.Height}}} zoom={zoom}");
                  _controllerBoundsPropCache    ??= controllerType.GetProperty("Bounds");
                  _controllerBoundsPropCache?.SetValue(controller, rect);
 
@@ -701,22 +1071,79 @@ namespace spotify
                     {
                         // Clamp zoom to a sane range to avoid extreme values from bad transforms
                         var zoomVal = Math.Max(0.25, Math.Min(4.0, zoom.Value));
-                        // First, try to get controller.CoreWebView2 and set its ZoomFactor property
-                        var coreProp = controllerType.GetProperty("CoreWebView2");
-                        if (coreProp != null)
+                        // Only attempt to apply if cache is unknown or it changed enough to matter
+                        if (double.IsNaN(_lastAppliedVisualZoom) || Math.Abs(zoomVal - _lastAppliedVisualZoom) > 0.001)
                         {
-                            var core = coreProp.GetValue(controller);
-                            if (core != null)
+                            // First, try to get controller.CoreWebView2 and set its ZoomFactor property
+                            var coreProp = controllerType.GetProperty("CoreWebView2");
+                            if (coreProp != null)
                             {
-                                var coreType = core.GetType();
-                                var zoomProp = coreType.GetProperty("ZoomFactor");
+                                var core = coreProp.GetValue(controller);
+                                if (core != null)
+                                {
+                                    var coreType = core.GetType();
+                                    var zoomProp = coreType.GetProperty("ZoomFactor");
+                                    if (zoomProp != null && zoomProp.PropertyType == typeof(double))
+                                    {
+                                        zoomProp.SetValue(core, zoomVal);
+                                    }
+                                    else
+                                    {
+                                        var setZoomMethod = coreType.GetMethod("SetZoomFactor") ?? coreType.GetMethod("SetZoom");
+                                        if (setZoomMethod != null)
+                                        {
+                                            var ptypes = setZoomMethod.GetParameters();
+                                            if (ptypes.Length == 1)
+                                            {
+                                                var argType = ptypes[0].ParameterType;
+                                                var conv = Convert.ChangeType(zoomVal, argType);
+                                                setZoomMethod.Invoke(core, new object[] { conv });
+                                            }
+                                        }
+                                    }
+                                    // Try to read back the actual zoom and cache it
+                                    try
+                                    {
+                                        var readBackProp = coreType.GetProperty("ZoomFactor");
+                                        if (readBackProp != null && readBackProp.PropertyType == typeof(double))
+                                        {
+                                            var rb = readBackProp.GetValue(core);
+                                            if (rb is double d) _lastAppliedVisualZoom = d;
+                                            else _lastAppliedVisualZoom = zoomVal;
+                                        }
+                                        else _lastAppliedVisualZoom = zoomVal;
+                                    }
+                                    catch { _lastAppliedVisualZoom = zoomVal; }
+                                    // If reading back didn't reflect the desired zoom, try a JS fallback
+                                    try
+                                    {
+                                        if (Math.Abs(_lastAppliedVisualZoom - zoomVal) > 0.01)
+                                        {
+                                            var exec = coreType.GetMethod("ExecuteScriptAsync", new[] { typeof(string) });
+                                            if (exec != null)
+                                            {
+                                                string script = $"(function(){{document.documentElement.style.zoom='{zoomVal}'; document.body.style.zoom='{zoomVal}';}})();";
+                                                try { exec.Invoke(core, new object[] { script }); }
+                                                catch { /* best-effort */ }
+                                                _lastAppliedVisualZoom = zoomVal; // assume success to avoid loops
+                                            }
+                                        }
+                                    }
+                                    catch { }
+                                }
+                            }
+                            else
+                            {
+                                // Fallback: try on the controller object itself
+                                var zoomProp = controllerType.GetProperty("ZoomFactor");
                                 if (zoomProp != null && zoomProp.PropertyType == typeof(double))
                                 {
-                                    zoomProp.SetValue(core, zoomVal);
+                                    zoomProp.SetValue(controller, zoomVal);
+                                    try { var rb = zoomProp.GetValue(controller); if (rb is double d) _lastAppliedVisualZoom = d; else _lastAppliedVisualZoom = zoomVal; } catch { _lastAppliedVisualZoom = zoomVal; }
                                 }
                                 else
                                 {
-                                    var setZoomMethod = coreType.GetMethod("SetZoomFactor") ?? coreType.GetMethod("SetZoom");
+                                    var setZoomMethod = controllerType.GetMethod("SetZoomFactor") ?? controllerType.GetMethod("SetZoom");
                                     if (setZoomMethod != null)
                                     {
                                         var ptypes = setZoomMethod.GetParameters();
@@ -724,41 +1151,53 @@ namespace spotify
                                         {
                                             var argType = ptypes[0].ParameterType;
                                             var conv = Convert.ChangeType(zoomVal, argType);
-                                            setZoomMethod.Invoke(core, new object[] { conv });
+                                            setZoomMethod.Invoke(controller, new object[] { conv });
+                                            _lastAppliedVisualZoom = zoomVal;
                                         }
                                     }
                                 }
                             }
                         }
-                        else
-                        {
-                            // Fallback: try on the controller object itself
-                            var zoomProp = controllerType.GetProperty("ZoomFactor");
-                            if (zoomProp != null && zoomProp.PropertyType == typeof(double))
-                            {
-                                zoomProp.SetValue(controller, zoomVal);
-                            }
-                            else
-                            {
-                                var setZoomMethod = controllerType.GetMethod("SetZoomFactor") ?? controllerType.GetMethod("SetZoom");
-                                if (setZoomMethod != null)
-                                {
-                                    var ptypes = setZoomMethod.GetParameters();
-                                    if (ptypes.Length == 1)
-                                    {
-                                        var argType = ptypes[0].ParameterType;
-                                        var conv = Convert.ChangeType(zoomVal, argType);
-                                        setZoomMethod.Invoke(controller, new object[] { conv });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[Spotify] Failed to set WebView2 ZoomFactor: {ex.Message}");
-                    }
-                }
+                     }
+                     catch (Exception ex)
+                     {
+                         Console.WriteLine($"[Spotify] Failed to set WebView2 ZoomFactor: {ex.Message}");
+                     }
+
+                     // Re-apply bounds and notify again after changing zoom so the WebView updates.
+                     try
+                     {
+                         _controllerBoundsPropCache ??= controllerType.GetProperty("Bounds");
+                         _controllerBoundsPropCache?.SetValue(controller, rect);
+                         _notifyParentMovedMethodCache ??= controllerType.GetMethod("NotifyParentWindowPositionChanged");
+                         _notifyParentMovedMethodCache?.Invoke(controller, null);
+                       Console.WriteLine("[Spotify] NotifyParentWindowPositionChanged invoked after zoom/bounds set");
+                     }
+                     catch (Exception ex)
+                     {
+                         Console.WriteLine($"[Spotify] Failed to re-notify WebView2 after zoom change: {ex.Message}");
+                     }
+
+                     // If the zoom wasn't applied yet (controller/CoreWebView2 not ready), start retrying
+                     try
+                     {
+                         if (zoom.HasValue)
+                         {
+                             var desired = Math.Max(0.25, Math.Min(4.0, zoom.Value));
+                             if (double.IsNaN(_lastAppliedVisualZoom) || Math.Abs(_lastAppliedVisualZoom - desired) > 0.01)
+                             {
+                                 // Controller didn't reflect the desired zoom yet — start retry timer
+                                 StartZoomRetry(desired, w, h);
+                             }
+                             else
+                             {
+                                 // Zoom applied successfully — stop any retry timer
+                                 StopZoomRetry();
+                             }
+                         }
+                     }
+                     catch { }
+                 }
                  return true;
              }
              catch (Exception ex)
@@ -775,13 +1214,66 @@ namespace spotify
         // where two WebView HWNDs both exist as children of the same editor window.
         private IntPtr TryGetWebViewHwnd()
         {
-            if (_webViewHwnd != IntPtr.Zero) return _webViewHwnd;
+            // If we already cached an HWND, ensure it's still valid (hasn't been reparented)
+            try
+            {
+                if (_webViewHwnd != IntPtr.Zero && _webView != null)
+                {
+                    var topLevel = TopLevel.GetTopLevel(_webView);
+                    var parentHwnd = topLevel?.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+                    if (parentHwnd != IntPtr.Zero)
+                    {
+                        IntPtr h = _webViewHwnd;
+                        IntPtr p = GetParent(h);
+                        // Walk up parents until we either reach parentHwnd or null
+                        while (p != IntPtr.Zero && p != parentHwnd)
+                        {
+                            h = p;
+                            p = GetParent(h);
+                        }
+                        if (p == parentHwnd) return _webViewHwnd; // still valid
+                        // otherwise fall through to refresh the cached value
+                        _webViewHwnd = IntPtr.Zero;
+                    }
+                    else
+                    {
+                        // No top-level to validate against; clear cache to be safe
+                        _webViewHwnd = IntPtr.Zero;
+                    }
+                }
+            }
+            catch { _webViewHwnd = IntPtr.Zero; }
+            
             if (_webView == null) return IntPtr.Zero;
 
             try
             {
                 _platformWebViewFieldCache ??= _webView.GetType().GetField(
                     "_platformWebView", BindingFlags.NonPublic | BindingFlags.Instance);
+                // Heuristic: if the standard field name isn't present, search for a field
+                // whose type name contains 'Platform' or 'PlatformWebView' or which
+                // exposes a _coreWebView2Controller property.
+                if (_platformWebViewFieldCache == null)
+                {
+                    foreach (var f in _webView.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public))
+                    {
+                        try
+                        {
+                            var ft = f.FieldType;
+                            if (ft.Name.IndexOf("Platform", StringComparison.OrdinalIgnoreCase) >= 0 || ft.Name.IndexOf("AvaloniaWebView", StringComparison.OrdinalIgnoreCase) >= 0)
+                            {
+                                // quick check: does this field's type have a _coreWebView2Controller property?
+                                var p = ft.GetProperty("_coreWebView2Controller", BindingFlags.NonPublic | BindingFlags.Instance);
+                                if (p != null)
+                                {
+                                    _platformWebViewFieldCache = f;
+                                    break;
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
                 if (_platformWebViewFieldCache == null) return IntPtr.Zero;
 
                 var platformWebView = _platformWebViewFieldCache.GetValue(_webView);
@@ -796,41 +1288,142 @@ namespace spotify
                 var controller = _coreControllerPropCache.GetValue(platformWebView);
                 if (controller == null) return IntPtr.Zero;
 
-                _controllerParentWindowPropCache ??= controller.GetType().GetProperty("ParentWindow");
-                var hwndVal = _controllerParentWindowPropCache?.GetValue(controller);
-                if (hwndVal is IntPtr hwnd && hwnd != IntPtr.Zero)
+                var controllerType = controller.GetType();
+
+                // 1) Try common "ParentWindow" field first (existing behavior)
+                var parentField = controllerType.GetField("ParentWindow", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (parentField != null)
                 {
-                    _webViewHwnd = hwnd;
-                    return hwnd;
+                    var val = parentField.GetValue(controller);
+                    if (val is IntPtr hwnd && hwnd != IntPtr.Zero)
+                    {
+                        Console.WriteLine($"[Spotify] Discovered WebView HWND via field ParentWindow: {hwnd}");
+                        if (_webViewHwnd != hwnd) _lastAppliedVisualZoom = double.NaN;
+                        _webViewHwnd = hwnd;
+                        return hwnd;
+                    }
                 }
-            }
-            catch { }
 
-            return IntPtr.Zero;
-        }
+                // 2) Try a ParentWindow property if present
+                var parentProp = controllerType.GetProperty("ParentWindow", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (parentProp != null && parentProp.GetMethod != null)
+                {
+                    try
+                    {
+                        var val = parentProp.GetValue(controller);
+                        if (val is IntPtr hwndProp && hwndProp != IntPtr.Zero)
+                        {
+                            Console.WriteLine($"[Spotify] Discovered WebView HWND via property ParentWindow: {hwndProp}");
+                            if (_webViewHwnd != hwndProp) _lastAppliedVisualZoom = double.NaN;
+                            _webViewHwnd = hwndProp;
+                            return hwndProp;
+                        }
+                        // some implementations might use a long/int for handle
+                        if (val is long l && l != 0)
+                        {
+                            var h = new IntPtr(l);
+                            Console.WriteLine($"[Spotify] Discovered WebView HWND via property ParentWindow (long): {h}");
+                            if (_webViewHwnd != h) _lastAppliedVisualZoom = double.NaN;
+                            _webViewHwnd = h;
+                            return h;
+                        }
+                        if (val is int i && i != 0)
+                        {
+                            var h = new IntPtr(i);
+                            Console.WriteLine($"[Spotify] Discovered WebView HWND via property ParentWindow (int): {h}");
+                            if (_webViewHwnd != h) _lastAppliedVisualZoom = double.NaN;
+                            _webViewHwnd = h;
+                            return h;
+                        }
+                    }
+                    catch { /* ignore getter failures */ }
+                }
 
-        [StructLayout(LayoutKind.Sequential)]
-        private struct RECT { public int Left, Top, Right, Bottom; }
+                // 3) Fallback: scan other fields and properties for any IntPtr/long/int that looks like an HWND
+                foreach (var f in controllerType.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    try
+                    {
+                        var ft = f.FieldType;
+                        if (ft == typeof(IntPtr) || ft == typeof(long) || ft == typeof(int))
+                        {
+                            var v = f.GetValue(controller);
+                            IntPtr cand = IntPtr.Zero;
+                            if (v is IntPtr iv && iv != IntPtr.Zero) cand = iv;
+                            else if (v is long lv && lv != 0) cand = new IntPtr(lv);
+                            else if (v is int iv2 && iv2 != 0) cand = new IntPtr(iv2);
 
-        private const uint SWP_NOZORDER   = 0x0004;
-        private const uint SWP_NOACTIVATE = 0x0010;
+                            if (cand != IntPtr.Zero)
+                            {
+                                Console.WriteLine($"[Spotify] Discovered WebView HWND via field {f.Name}: {cand}");
+                                if (_webViewHwnd != cand) _lastAppliedVisualZoom = double.NaN;
+                                _webViewHwnd = cand;
+                                return cand;
+                            }
+                        }
+                    }
+                    catch { }
+                }
 
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+                foreach (var p in controllerType.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    if (p.GetMethod == null) continue;
+                    try
+                    {
+                        var pt = p.PropertyType;
+                        if (pt == typeof(IntPtr) || pt == typeof(long) || pt == typeof(int))
+                        {
+                            var v = p.GetValue(controller);
+                            IntPtr cand = IntPtr.Zero;
+                            if (v is IntPtr iv && iv != IntPtr.Zero) cand = iv;
+                            else if (v is long lv && lv != 0) cand = new IntPtr(lv);
+                            else if (v is int iv2 && iv2 != 0) cand = new IntPtr(iv2);
+
+                            if (cand != IntPtr.Zero)
+                            {
+                                Console.WriteLine($"[Spotify] Discovered WebView HWND via property {p.Name}: {cand}");
+                                if (_webViewHwnd != cand) _lastAppliedVisualZoom = double.NaN;
+                                _webViewHwnd = cand;
+                                return cand;
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                Console.WriteLine("[Spotify] ParentWindow field missing or zero");
+                return IntPtr.Zero;
+             }
+             catch (Exception ex)
+             {
+                 Console.WriteLine($"[Spotify] TryGetWebViewHwnd failed: {ex.Message}");
+                 return IntPtr.Zero;
+             }
+         }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
+
+        [DllImport("user32.dll")]
         private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string? lpszClass, string? lpszWindow);
 
         [DllImport("user32.dll")]
         private static extern IntPtr GetParent(IntPtr hWnd);
 
         [DllImport("user32.dll")]
-        private static extern bool GetClientRect(IntPtr hwnd, out RECT lpRect);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+        private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
 
         [DllImport("gdi32.dll")]
-        private static extern IntPtr CreateRoundRectRgn(int x1, int y1, int x2, int y2, int cx, int cy);
+        private static extern IntPtr CreateRoundRectRgn(int nLeftRect, int nTopRect, int nRightRect, int nBottomRect, int nWidthEllipse, int nHeightEllipse);
 
-        [DllImport("user32.dll")]
-        private static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
     }
 }
+
