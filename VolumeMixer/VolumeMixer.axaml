@@ -1,0 +1,409 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="VolumeMixer.VolumeMixer">
+    
+    <UserControl.Resources>
+        <!-- Gradient Brushes from your custom theme -->
+        <LinearGradientBrush x:Key="ThumbGradientBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Offset="0" Color="#323232" />
+            <GradientStop Offset="0.2" Color="#424242" />
+            <GradientStop Offset="0.2" Color="#121212" />
+            <GradientStop Offset="0.5" Color="#323232" />
+            <GradientStop Offset="0.8" Color="#444444" />
+            <GradientStop Offset="0.8" Color="#141414" />
+            <GradientStop Offset="1" Color="#080808" />
+        </LinearGradientBrush>
+        
+
+        
+        <LinearGradientBrush x:Key="TrackGradientBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Offset="0" Color="#101010" />
+            <GradientStop Offset="1" Color="#101010" />
+        </LinearGradientBrush>
+        
+
+        
+        <!-- Custom Slider Thumb Theme -->
+        <ControlTheme x:Key="CustomSliderThumbTheme" TargetType="Thumb">
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border
+                        Background="{StaticResource ThumbGradientBrush}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="2">
+                        <Border CornerRadius="1" Margin="1,0" Background="{DynamicResource ColorModuleAccentColor}"
+                                VerticalAlignment="Center" Height="2">
+                        </Border>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </ControlTheme>
+        
+        <!-- Custom Slider RepeatButton Theme -->
+        <ControlTheme x:Key="CustomSliderVerticalRepeatButton" TargetType="RepeatButton">
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Grid>
+                        <Border Width="8" Background="{StaticResource TrackGradientBrush}"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                            <Border Name="TrackBackground"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="1"
+                                    Width="4"
+                                    Margin="0"
+                                    HorizontalAlignment="Center" />
+                        </Border>
+                    </Grid>
+                </ControlTemplate>
+            </Setter>
+        </ControlTheme>
+        
+
+        
+        <!-- Custom Slider Theme -->
+        <ControlTheme x:Key="CustomSliderTheme" TargetType="Slider">
+            <Setter Property="Background" Value="#101010" />
+            <Setter Property="Foreground" Value="{DynamicResource ColorModuleAccentColor}" />
+            <Style Selector="^:vertical">
+                <Setter Property="Template">
+                    <ControlTemplate>
+                        <DataValidationErrors>
+                            <Border
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                                <Grid x:Name="SliderContainer"
+                                      Background="Transparent"
+                                      Margin="{TemplateBinding Padding}">
+                                    <Grid
+                                        x:Name="VerticalTemplate"
+                                        MinWidth="8"
+                                        RowDefinitions="*,Auto,Auto">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="4" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="4" />
+                                        </Grid.ColumnDefinitions>
+                                        <Track
+                                            Name="PART_Track"
+                                            Grid.RowSpan="3"
+                                            Grid.Column="1"
+                                            Minimum="{TemplateBinding Minimum}"
+                                            Maximum="{TemplateBinding Maximum}"
+                                            Value="{TemplateBinding Value, Mode=TwoWay}"
+                                            IsDirectionReversed="{TemplateBinding IsDirectionReversed}"
+                                            Orientation="Vertical">
+                                            <Track.IncreaseButton>
+                                                <RepeatButton IsHitTestVisible="False"
+                                                              CornerRadius="2,2,0,0"
+                                                              Name="PART_IncreaseButton"
+                                                              Background="{TemplateBinding Background}"
+                                                              Theme="{StaticResource CustomSliderVerticalRepeatButton}"
+                                                              Focusable="False" />
+                                            </Track.IncreaseButton>
+                                            <Thumb Name="SliderThumb"
+                                                   Width="16"
+                                                   Height="22"
+                                                   Margin="0"
+                                                   Padding="0"
+                                                   Background="#525252"
+                                                   Theme="{StaticResource CustomSliderThumbTheme}"
+                                                   DataContext="{TemplateBinding Value}"
+                                                   ZIndex="100" />
+                                            <Track.DecreaseButton>
+                                                <RepeatButton IsHitTestVisible="False"
+                                                              CornerRadius="0,0,2,2"
+                                                              Name="PART_DecreaseButton"
+                                                              Theme="{StaticResource CustomSliderVerticalRepeatButton}"
+                                                              Background="{TemplateBinding Foreground}"
+                                                              Focusable="False" />
+                                            </Track.DecreaseButton>
+                                        </Track>
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                        </DataValidationErrors>
+                    </ControlTemplate>
+                </Setter>
+            </Style>
+            
+
+
+            <!-- Pressed State -->
+            <Style Selector="^:pressed">
+                <Style Selector="^ /template/ Thumb">
+                    <Setter Property="Background" Value="#424242" />
+                </Style>
+            </Style>
+            
+            <!-- Disabled State -->
+            <Style Selector="^:disabled">
+                <Style Selector="^ /template/ RepeatButton#PART_DecreaseButton">
+                    <Setter Property="Background" Value="#333333" />
+                </Style>
+                <Style Selector="^ /template/ RepeatButton#PART_IncreaseButton">
+                    <Setter Property="Background" Value="#333333" />
+                </Style>
+                <Style Selector="^ /template/ Thumb">
+                    <Setter Property="Background" Value="#333333" />
+                </Style>
+            </Style>
+        </ControlTheme>
+    </UserControl.Resources>
+    
+    <UserControl.Styles>
+        
+        <!-- Button Square Base Style -->
+        <Style Selector="Button.square">
+            <Setter Property="Width" Value="16"/>
+            <Setter Property="Height" Value="16"/>
+            <Setter Property="MinWidth" Value="16"/>
+            <Setter Property="MinHeight" Value="16"/>
+            <Setter Property="MaxWidth" Value="16"/>
+            <Setter Property="MaxHeight" Value="16"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="#2A2A2A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#555555"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Button Square Hover State -->
+        <Style Selector="Button.square:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#424242"/>
+        </Style>
+
+        <!-- Button Square Pressed State -->
+        <Style Selector="Button.square:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#1A1A1A"/>
+        </Style>
+
+        <!-- General Button Style -->
+        <Style Selector="Button">
+            <Setter Property="Background" Value="#2A2A2A"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#555555"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="2"/>
+        </Style>
+
+        <!-- General Button Hover State -->
+        <Style Selector="Button:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#3A3A3A"/>
+        </Style>
+
+        <!-- General Button Pressed State -->
+        <Style Selector="Button:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#1A1A1A"/>
+        </Style>
+        
+        <Style>
+            <Style.Resources>
+                <FontFamily x:Key="PressStart2P">avares://Docklys.ModuleContracts/Assets/Fonts/PressStart2P-Regular.ttf#Press Start 2P</FontFamily>
+            </Style.Resources>
+        </Style>
+        <!-- Style for MenuItem -->
+        <!-- Style for MenuItem -->
+        <Style Selector="MenuItem">
+            <Setter Property="FontFamily" Value="{StaticResource PressStart2P}" />
+            <Setter Property="FontSize" Value="8" />
+            <Setter Property="Foreground" Value="{DynamicResource ColorFont}" />
+            <Setter Property="Padding" Value="8,2" />
+            <Setter Property="MinHeight" Value="16" />
+            <Setter Property="Height" Value="16" />
+        </Style>
+
+        <!-- Style for MenuFlyout's presenter -->
+        <Style Selector="MenuFlyout > MenuFlyoutPresenter">
+            <Setter Property="FontFamily" Value="{StaticResource PressStart2P}" />
+            <Setter Property="FontSize" Value="8" />
+            <Setter Property="Foreground" Value="{DynamicResource ColorFont}" />
+        </Style>
+
+        <Style Selector="MenuFlyoutPresenter">
+            <Setter Property="Width" Value="110"/>
+            <Setter Property="Height" Value="94"/>
+            <Setter Property="Background" Value="{DynamicResource ColorModuleColor}"/>
+            <Setter Property="Padding" Value="4" />
+            <Setter Property="CornerRadius" Value="2" />
+        </Style>
+        <!-- Style for MenuItem -->
+        <Style Selector="MenuItem">
+            <Setter Property="FontFamily" Value="{StaticResource PressStart2P}" />
+            <Setter Property="FontSize" Value="8" />
+            <Setter Property="Foreground" Value="{DynamicResource ColorFont}" />
+            <Setter Property="Padding" Value="8,2" />
+            <Setter Property="MinHeight" Value="16" />
+            <Setter Property="Height" Value="16" />
+        </Style>
+
+        <!-- Style for the inline TextBox -->
+        <Style Selector="TextBox.inline-edit">
+            <Setter Property="FontFamily" Value="{StaticResource PressStart2P}" />
+            <Setter Property="FontSize" Value="8" />
+            <Setter Property="Foreground" Value="{DynamicResource ColorFont}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MaxLength" Value="8" />
+        </Style>
+        <!-- Style for Separator to make it thinner -->
+        <Style Selector="Separator">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Margin" Value="8,2" />
+        </Style>
+    </UserControl.Styles>
+    
+    <Border Background="{DynamicResource ColorModuleColor}" 
+            CornerRadius="10" 
+            Padding="6" 
+            Width="110" 
+            Height="110">
+        <DockPanel x:Name="RootDockPanel" Margin="-2,0,0,0">
+            
+            <StackPanel Orientation="Horizontal" 
+                        HorizontalAlignment="Center" 
+                        Spacing="2">
+                
+                <!-- Slider 1 -->
+                <StackPanel>
+                    <Grid Width="24" Height="68">
+                        <StackPanel Orientation="Vertical" 
+                                    HorizontalAlignment="Center" 
+                                    VerticalAlignment="Stretch" 
+                                    Margin="0,4,0,4"
+                                    IsHitTestVisible="False"
+                                    ZIndex="1">
+                        </StackPanel>
+                        
+                        <Slider x:Name="VolumeSlider1"
+                                Minimum="0" 
+                                Maximum="100" 
+                                Orientation="Vertical" 
+                                Height="80" 
+                                Value="70" 
+                                VerticalAlignment="Top"
+                                HorizontalAlignment="Center"
+                                Theme="{StaticResource CustomSliderTheme}"
+                                ZIndex="100"/>
+                    </Grid>
+                    
+                    <!-- Fixed button container using Grid -->
+                    <Grid Width="16" Height="16" HorizontalAlignment="Center" Margin="0,15,0,0">
+                        <Button x:Name="SourceIcon1"
+                                FontSize="8"
+                                Padding="0"
+                                VerticalAlignment="Bottom"
+                                Click="PresetButton_Click"
+                                Classes="square"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- Slider 2 -->
+                <StackPanel>
+                    <Grid Width="24" Height="68">
+                        <StackPanel Orientation="Vertical" 
+                                    HorizontalAlignment="Center" 
+                                    VerticalAlignment="Stretch" 
+                                    Margin="0,4,0,4"
+                                    IsHitTestVisible="False"
+                                    ZIndex="1">
+                        </StackPanel>
+                        
+                        <Slider x:Name="VolumeSlider2"
+                                Minimum="0" 
+                                Maximum="100" 
+                                Orientation="Vertical" 
+                                Height="80" 
+                                Value="70" 
+                                VerticalAlignment="Top"
+                                HorizontalAlignment="Center"
+                                Theme="{StaticResource CustomSliderTheme}"
+                                ZIndex="100"/>
+                    </Grid>
+                    
+                    <!-- Fixed button container using Grid -->
+                    <Grid Width="16" Height="16" HorizontalAlignment="Center" Margin="0,15,0,0">
+                        <Button x:Name="SourceIcon2"
+                                FontSize="8"
+                                Padding="0"
+                                VerticalAlignment="Bottom"
+                                Click="PresetButton_Click"
+                                Classes="square"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- Slider 3 -->
+                <StackPanel>
+                    <Grid Width="24" Height="68">
+                        <StackPanel Orientation="Vertical" 
+                                    HorizontalAlignment="Center" 
+                                    VerticalAlignment="Stretch" 
+                                    Margin="0,4,0,4"
+                                    IsHitTestVisible="False"
+                                    ZIndex="1">
+                        </StackPanel>
+                        
+                        <Slider x:Name="VolumeSlider3"
+                                Minimum="0" 
+                                Maximum="100" 
+                                Orientation="Vertical" 
+                                Height="80" 
+                                Value="70" 
+                                VerticalAlignment="Top"
+                                HorizontalAlignment="Center"
+                                Theme="{StaticResource CustomSliderTheme}"
+                                ZIndex="100"/>
+                    </Grid>
+                    
+                    <!-- Fixed button container using Grid -->
+                    <Grid Width="16" Height="16" HorizontalAlignment="Center" Margin="0,15,0,0">
+                        <Button x:Name="SourceIcon3"
+                                FontSize="8"
+                                Padding="0"
+                                VerticalAlignment="Bottom"
+                                Click="PresetButton_Click"
+                                Classes="square"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- Slider 4 -->
+                <StackPanel>
+                    <Grid Width="24" Height="68">
+                        <StackPanel Orientation="Vertical" 
+                                    HorizontalAlignment="Center" 
+                                    VerticalAlignment="Stretch" 
+                                    Margin="0,4,0,4"
+                                    IsHitTestVisible="False"
+                                    ZIndex="1">
+                        </StackPanel>
+                        
+                        <Slider x:Name="VolumeSlider4"
+                                Minimum="0" 
+                                Maximum="100" 
+                                Orientation="Vertical" 
+                                Height="80" 
+                                Value="70" 
+                                VerticalAlignment="Top"
+                                HorizontalAlignment="Center"
+                                Theme="{StaticResource CustomSliderTheme}"
+                                ZIndex="100"/>
+                    </Grid>
+                    
+                    <!-- Fixed button container using Grid -->
+                    <Grid Width="16" Height="16" HorizontalAlignment="Center" Margin="0,15,0,0">
+                        <Button x:Name="SourceIcon4"
+                                FontSize="8"
+                                Padding="0"
+                                VerticalAlignment="Bottom"
+                                Click="PresetButton_Click"
+                                Classes="square"
+                                Width="16" Height="16"/>
+                    </Grid>
+                </StackPanel>
+            </StackPanel>
+        </DockPanel>
+    </Border>
+</UserControl>
