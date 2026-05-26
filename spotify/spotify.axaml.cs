@@ -349,6 +349,7 @@ namespace spotify
                     }, DispatcherPriority.Background);
                     SubscribeToAncestorTransforms();
                     StartContinuousSync();
+                    ScheduleInitialSettings();
 
                     try { urlProp?.SetValue(webView, new Uri(SpotifyUrl)); }
                     catch (Exception ex) { ShowError($"Failed to navigate to Spotify:\n{ex.InnerException?.Message ?? ex.Message}"); }
@@ -387,7 +388,7 @@ namespace spotify
                             catch { visualScale = 1.0; }
 
                             // Force controller reposition + zoom set
-                            ForceWebView2RepositioningWithSize(0, w, h, visualScale);
+                            ForceWebView2RepositioningWithSize(0, w, h);
                         }
                         catch { }
                     }, DispatcherPriority.Background);
@@ -642,12 +643,134 @@ namespace spotify
         // Cache last applied visual zoom to avoid redundant sets and reduce races.
         // Start as NaN so the first set always applies.
         private double _lastAppliedVisualZoom = double.NaN;
+        // Mobile user agent so Spotify serves the compact mobile layout.
+        private const string MobileUserAgent =
+            "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36";
+        private bool _mobileUaApplied;
         // Pending zoom retry state when the controller isn't ready yet.
         private DispatcherTimer? _zoomRetryTimer;
         private double? _pendingZoomVal;
         private int _pendingZoomW;
         private int _pendingZoomH;
         private int _pendingZoomAttempts;
+
+        // Applies the mobile user agent and initial page zoom directly via the
+        // CoreWebView2 controller. Called from the WebView Loaded event and retried
+        // until CoreWebView2 is ready, so it works even when the controller isn't
+        // available immediately (e.g. in the main Docklys app).
+        private void ScheduleInitialSettings()
+        {
+            _mobileUaApplied = false;
+            var attempts = 0;
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+            timer.Tick += (_, _) =>
+            {
+                attempts++;
+                if (TryApplyInitialSettings() || attempts >= 20)
+                    timer.Stop();
+            };
+            Dispatcher.UIThread.Post(() => TryApplyInitialSettings(), DispatcherPriority.Background);
+            timer.Start();
+        }
+
+        private bool TryApplyInitialSettings()
+        {
+            if (_webView == null) return false;
+            try
+            {
+                _platformWebViewFieldCache ??= _webView.GetType().GetField(
+                    "_platformWebView", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (_platformWebViewFieldCache == null) return false;
+                var platformWebView = _platformWebViewFieldCache.GetValue(_webView);
+                if (platformWebView == null) return false;
+
+                var platformType = platformWebView.GetType();
+                if (_coreControllerPropCache == null || _coreControllerPropCache.DeclaringType != platformType)
+                    _coreControllerPropCache = platformType.GetProperty(
+                        "_coreWebView2Controller", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (_coreControllerPropCache == null) return false;
+                var controller = _coreControllerPropCache.GetValue(platformWebView);
+                if (controller == null) return false;
+                var controllerType = controller.GetType();
+
+                // Get CoreWebView2 — not ready yet if null, retry later.
+                var coreProp = controllerType.GetProperty("CoreWebView2");
+                var core = coreProp?.GetValue(controller);
+                if (core == null) return false;
+
+                var coreType = core.GetType();
+
+                if (!_mobileUaApplied)
+                {
+                    try
+                    {
+                        // Set initial page zoom to 50% (5 Ctrl+scroll-down notches: 100→90→80→75→67→50).
+                        // Done once here; the sync timer never touches ZoomFactor so Ctrl+scroll works freely.
+                        var zoomProp = controllerType.GetProperty("ZoomFactor");
+                        if (zoomProp?.PropertyType == typeof(double))
+                            try { zoomProp.SetValue(controller, 0.5); } catch { }
+
+                        var settingsProp = coreType.GetProperty("Settings");
+                        var settings = settingsProp?.GetValue(core);
+                        var uaProp = settings?.GetType().GetProperty("UserAgent");
+                        if (uaProp != null)
+                        {
+                            uaProp.SetValue(settings, MobileUserAgent);
+                            _mobileUaApplied = true;
+
+                            // Script registered for every future document (survives in-app navigations).
+                            // Uses a MutationObserver so Spotify can't add the scrollbar back after our CSS runs.
+                            const string persistentScript =
+                                "(function(){" +
+                                "function applyNoScroll(){" +
+                                "var s=document.getElementById('_dockly_noscroll');" +
+                                "if(!s){s=document.createElement('style');s.id='_dockly_noscroll';" +
+                                "(document.head||document.documentElement).appendChild(s);}" +
+                                "s.textContent='::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}" +
+                                "*{scrollbar-width:none!important;-ms-overflow-style:none!important}';" +
+                                "}" +
+                                "applyNoScroll();" +
+                                "new MutationObserver(applyNoScroll).observe(document.documentElement,{childList:true,subtree:true});" +
+                                "})();";
+                            var addScript = coreType.GetMethod("AddScriptToExecuteOnDocumentCreatedAsync",
+                                new[] { typeof(string) });
+                            addScript?.Invoke(core, new object[] { persistentScript });
+
+                            // Navigate with the new UA.
+                            var navigateMethod = coreType.GetMethod("Navigate", new[] { typeof(string) });
+                            navigateMethod?.Invoke(core, new object[] { SpotifyUrl });
+                        }
+                    }
+                    catch { }
+                }
+
+                // Inject into the live page on every retry tick as well — catches the window
+                // between document creation and our MutationObserver being registered.
+                try
+                {
+                    const string liveScript =
+                        "(function(){" +
+                        "function applyNoScroll(){" +
+                        "var s=document.getElementById('_dockly_noscroll');" +
+                        "if(!s){s=document.createElement('style');s.id='_dockly_noscroll';" +
+                        "(document.head||document.documentElement).appendChild(s);}" +
+                        "s.textContent='::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}" +
+                        "*{scrollbar-width:none!important;-ms-overflow-style:none!important}';" +
+                        "}" +
+                        "applyNoScroll();" +
+                        "if(!window._docklyObserver){" +
+                        "window._docklyObserver=new MutationObserver(applyNoScroll);" +
+                        "window._docklyObserver.observe(document.documentElement,{childList:true,subtree:true});}" +
+                        "})();";
+                    var execScript = coreType.GetMethod("ExecuteScriptAsync", new[] { typeof(string) });
+                    execScript?.Invoke(core, new object[] { liveScript });
+                }
+                catch { }
+
+                return _mobileUaApplied;
+            }
+            catch { return false; }
+        }
 
         private void StartZoomRetry(double zoomVal, int w, int h)
         {
@@ -1034,7 +1157,7 @@ namespace spotify
 
             Console.WriteLine($"[Spotify] computed visualScale={visualScale}");
 
-            ForceWebView2RepositioningWithSize(0, w, h, visualScale);
+            ForceWebView2RepositioningWithSize(0, w, h);
         }
 
         // Same as ForceWebView2Repositioning but with explicit width/height so we can
@@ -1093,113 +1216,6 @@ namespace spotify
                  _notifyParentMovedMethodCache ??= controllerType.GetMethod("NotifyParentWindowPositionChanged");
                  _notifyParentMovedMethodCache?.Invoke(controller, null);
 
-                // If caller provided a visual zoom (e.g. editor ScaleTransform), apply it
-                // to the WebView2 controller's ZoomFactor if the property exists.
-                if (zoom.HasValue)
-                {
-                    try
-                    {
-                        // Clamp zoom to a sane range to avoid extreme values from bad transforms
-                        var zoomVal = Math.Max(0.25, Math.Min(4.0, zoom.Value));
-                        // Only attempt to apply if cache is unknown or it changed enough to matter
-                        if (double.IsNaN(_lastAppliedVisualZoom) || Math.Abs(zoomVal - _lastAppliedVisualZoom) > 0.001)
-                        {
-                            // ZoomFactor lives on CoreWebView2Controller, NOT on the inner CoreWebView2.
-                            // The previous order (CoreWebView2 first, controller as fallback) silently no-opped
-                            // because CoreWebView2.GetProperty("ZoomFactor") returns null but coreProp itself is
-                            // non-null, so the working controller branch was never reached.
-                            bool applied = false;
-                            var zoomPropOnController = controllerType.GetProperty("ZoomFactor");
-                            if (zoomPropOnController != null && zoomPropOnController.PropertyType == typeof(double))
-                            {
-                                try
-                                {
-                                    zoomPropOnController.SetValue(controller, zoomVal);
-                                    var rb = zoomPropOnController.GetValue(controller);
-                                    _lastAppliedVisualZoom = rb is double d ? d : zoomVal;
-                                    applied = Math.Abs(_lastAppliedVisualZoom - zoomVal) < 0.01;
-                                }
-                                catch (Exception ex)
-                                {
-                                    Console.WriteLine($"[Spotify] controller.ZoomFactor set failed: {ex.Message}");
-                                }
-                            }
-                            else
-                            {
-                                var setZoomMethod = controllerType.GetMethod("SetZoomFactor") ?? controllerType.GetMethod("SetZoom");
-                                if (setZoomMethod != null && setZoomMethod.GetParameters().Length == 1)
-                                {
-                                    try
-                                    {
-                                        var conv = Convert.ChangeType(zoomVal, setZoomMethod.GetParameters()[0].ParameterType);
-                                        setZoomMethod.Invoke(controller, new object[] { conv });
-                                        _lastAppliedVisualZoom = zoomVal;
-                                        applied = true;
-                                    }
-                                    catch { }
-                                }
-                            }
-
-                            // Last resort: CSS zoom via JS. Doesn't replace ZoomFactor but at least
-                            // scales the page content if the wrapped controller doesn't expose it.
-                            if (!applied)
-                            {
-                                try
-                                {
-                                    var coreProp = controllerType.GetProperty("CoreWebView2");
-                                    var core = coreProp?.GetValue(controller);
-                                    var exec = core?.GetType().GetMethod("ExecuteScriptAsync", new[] { typeof(string) });
-                                    if (exec != null && core != null)
-                                    {
-                                        var zStr = zoomVal.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                                        var script = $"(function(){{document.documentElement.style.zoom='{zStr}'; document.body.style.zoom='{zStr}';}})();";
-                                        exec.Invoke(core, new object[] { script });
-                                        _lastAppliedVisualZoom = zoomVal;
-                                    }
-                                }
-                                catch { }
-                            }
-                        }
-                     }
-                     catch (Exception ex)
-                     {
-                         Console.WriteLine($"[Spotify] Failed to set WebView2 ZoomFactor: {ex.Message}");
-                     }
-
-                     // Re-apply bounds and notify again after changing zoom so the WebView updates.
-                     try
-                     {
-                         _controllerBoundsPropCache ??= controllerType.GetProperty("Bounds");
-                         _controllerBoundsPropCache?.SetValue(controller, rect);
-                         _notifyParentMovedMethodCache ??= controllerType.GetMethod("NotifyParentWindowPositionChanged");
-                         _notifyParentMovedMethodCache?.Invoke(controller, null);
-                       Console.WriteLine("[Spotify] NotifyParentWindowPositionChanged invoked after zoom/bounds set");
-                     }
-                     catch (Exception ex)
-                     {
-                         Console.WriteLine($"[Spotify] Failed to re-notify WebView2 after zoom change: {ex.Message}");
-                     }
-
-                     // If the zoom wasn't applied yet (controller/CoreWebView2 not ready), start retrying
-                     try
-                     {
-                         if (zoom.HasValue)
-                         {
-                             var desired = Math.Max(0.25, Math.Min(4.0, zoom.Value));
-                             if (double.IsNaN(_lastAppliedVisualZoom) || Math.Abs(_lastAppliedVisualZoom - desired) > 0.01)
-                             {
-                                 // Controller didn't reflect the desired zoom yet — start retry timer
-                                 StartZoomRetry(desired, w, h);
-                             }
-                             else
-                             {
-                                 // Zoom applied successfully — stop any retry timer
-                                 StopZoomRetry();
-                             }
-                         }
-                     }
-                     catch { }
-                 }
                  return true;
              }
              catch (Exception ex)
