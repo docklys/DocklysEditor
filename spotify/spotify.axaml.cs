@@ -643,6 +643,10 @@ namespace spotify
         // Cache last applied visual zoom to avoid redundant sets and reduce races.
         // Start as NaN so the first set always applies.
         private double _lastAppliedVisualZoom = double.NaN;
+        // Visible (clipped) HWND width in physical pixels. The HWND is made wider by
+        // the Chromium scrollbar width so the scrollbar renders off-screen; the
+        // SetWindowRgn clip is set to this narrower value to hide those extra pixels.
+        private int _visibleHwndW;
         // Mobile user agent so Spotify serves the compact mobile layout.
         private const string MobileUserAgent =
             "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36";
@@ -974,8 +978,8 @@ namespace spotify
                     }
                     catch { }
 
-                    ApplyRoundedRgn(outerHwnd, diameter);
-                    if (outerHwnd != innerHwnd) ApplyRoundedRgn(innerHwnd, diameter);
+                    ApplyRoundedRgn(outerHwnd, diameter, _visibleHwndW);
+                    if (outerHwnd != innerHwnd) ApplyRoundedRgn(innerHwnd, diameter, _visibleHwndW);
                 }
                 else
                 {
@@ -983,7 +987,7 @@ namespace spotify
                     IntPtr child = FindWindowEx(parentHwnd, IntPtr.Zero, null, null);
                     while (child != IntPtr.Zero)
                     {
-                        ApplyRoundedRgn(child, diameter);
+                        ApplyRoundedRgn(child, diameter, _visibleHwndW);
                         child = FindWindowEx(parentHwnd, child, null, null);
                     }
                 }
@@ -994,10 +998,11 @@ namespace spotify
             }
         }
 
-        private static void ApplyRoundedRgn(IntPtr hwnd, int diameter)
+        private static void ApplyRoundedRgn(IntPtr hwnd, int diameter, int visibleWidth = 0)
         {
             if (!GetClientRect(hwnd, out RECT r)) return;
-            int w = r.Right - r.Left;
+            // Use visibleWidth when supplied so the clip excludes the off-screen scrollbar pixels.
+            int w = (visibleWidth > 0 && visibleWidth < r.Right - r.Left) ? visibleWidth : (r.Right - r.Left);
             int h = r.Bottom - r.Top;
             if (w <= 50 || h <= 50) return;
             IntPtr rgn = CreateRoundRectRgn(0, 0, w + 1, h + 1, diameter, diameter);
@@ -1080,6 +1085,13 @@ namespace spotify
             int w = Math.Max(1, (int)(visualRect.Width * scaling));
             int h = Math.Max(1, (int)(visualRect.Height * scaling));
 
+            // Extend the HWND by the Chromium scrollbar width so the scrollbar renders
+            // off the right edge. SetWindowRgn (via ApplyWebViewRoundedCorners) clips
+            // the visible region back to w, making the scrollbar invisible.
+            int scrollbarExtra = Math.Max(0, (int)(15 * scaling));
+            _visibleHwndW = w;
+            int wExt = w + scrollbarExtra;
+
             int targetX = x;
 
             try
@@ -1104,14 +1116,15 @@ namespace spotify
                     catch { /* ignore */ }
 
                     // Position the outer window (the one whose origin is in TopLevel coords).
-                    SetWindowPos(outerHwnd, IntPtr.Zero, targetX, y, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+                    // Use wExt so the scrollbar renders off the right edge (clipped by SetWindowRgn).
+                    SetWindowPos(outerHwnd, IntPtr.Zero, targetX, y, wExt, h, SWP_NOZORDER | SWP_NOACTIVATE);
 
                     // If we moved a wrapper (outer != inner), ensure the inner WebView HWND
-                    // fills the moved container so the DComp surface is at 0,0..w,h.
+                    // fills the moved container so the DComp surface is at 0,0..wExt,h.
                     if (outerHwnd != ourHwnd)
                     {
-                        SetWindowPos(ourHwnd, IntPtr.Zero, 0, 0, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
-                        Console.WriteLine($"[Spotify] Positioned outerHwnd={outerHwnd} innerHwnd={ourHwnd} -> x={targetX},y={y},w={w},h={h}");
+                        SetWindowPos(ourHwnd, IntPtr.Zero, 0, 0, wExt, h, SWP_NOZORDER | SWP_NOACTIVATE);
+                        Console.WriteLine($"[Spotify] Positioned outerHwnd={outerHwnd} innerHwnd={ourHwnd} -> x={targetX},y={y},w={wExt},h={h}");
                     }
                 }
                 else
@@ -1125,7 +1138,7 @@ namespace spotify
                             int ch = r.Bottom - r.Top;
                             Console.WriteLine($"[Spotify] Enumerating child HWND={child} client={cw}x{ch}");
                             if (cw > 50 && ch > 50)
-                                SetWindowPos(child, IntPtr.Zero, targetX, y, w, h,
+                                SetWindowPos(child, IntPtr.Zero, targetX, y, wExt, h,
                                     SWP_NOZORDER | SWP_NOACTIVATE);
                         }
                         child = FindWindowEx(parentHwnd, child, null, null);
@@ -1157,7 +1170,7 @@ namespace spotify
 
             Console.WriteLine($"[Spotify] computed visualScale={visualScale}");
 
-            ForceWebView2RepositioningWithSize(0, w, h);
+            ForceWebView2RepositioningWithSize(0, wExt, h);
         }
 
         // Same as ForceWebView2Repositioning but with explicit width/height so we can
