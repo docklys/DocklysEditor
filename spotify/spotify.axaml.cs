@@ -727,10 +727,10 @@ namespace spotify
                         catch { }
                     }
                 }
-                if (_platformWebViewFieldCache == null) return IntPtr.Zero;
+                if (_platformWebViewFieldCache == null) return false;
 
                 var platformWebView = _platformWebViewFieldCache.GetValue(_webView);
-                if (platformWebView == null) return IntPtr.Zero;
+                if (platformWebView == null) return false;
 
                 var platformType = platformWebView.GetType();
                 if (_coreControllerPropCache == null || _coreControllerPropCache.DeclaringType != platformType)
@@ -761,10 +761,10 @@ namespace spotify
                         }
                     }
                 }
-                if (_coreControllerPropCache == null) return IntPtr.Zero;
+                if (_coreControllerPropCache == null) return false;
 
                 var controller = _coreControllerPropCache.GetValue(platformWebView);
-                if (controller == null) return IntPtr.Zero;
+                if (controller == null) return false;
 
                 var controllerType = controller.GetType();
                 var bounds = _webView.Bounds;
@@ -807,23 +807,52 @@ namespace spotify
             if (parentHwnd == IntPtr.Zero) return;
 
             double scaling = topLevel.RenderScaling;
-            int diameter = (int)(10 * scaling * 2); // CornerRadius=10 → physical pixel diameter
+
+            // Match the outer Avalonia Border's visual radius: it's CornerRadius=10 in
+            // logical units, scaled by any ancestor RenderTransform/Viewbox. The HWND
+            // region is in physical pixels, so multiply by both DPI and that visual scale.
+            double visualScale = 1.0;
+            var cornerTransform = this.TransformToVisual(topLevel);
+            if (cornerTransform.HasValue)
+            {
+                var m = cornerTransform.Value;
+                if (topLevel.RenderTransform != null)
+                {
+                    try { m = topLevel.RenderTransform.Value * cornerTransform.Value; } catch { }
+                }
+                var p0 = m.Transform(new Point(0, 0));
+                var p1 = m.Transform(new Point(1, 0));
+                var p2 = m.Transform(new Point(0, 1));
+                double sx = Math.Sqrt(Math.Pow(p1.X - p0.X, 2) + Math.Pow(p1.Y - p0.Y, 2));
+                double sy = Math.Sqrt(Math.Pow(p2.X - p0.X, 2) + Math.Pow(p2.Y - p0.Y, 2));
+                if (double.IsFinite(sx) && double.IsFinite(sy) && sx > 0 && sy > 0)
+                    visualScale = (sx + sy) / 2.0;
+            }
+
+            int diameter = Math.Max(2, (int)(10 * scaling * visualScale * 2));
 
             try
             {
-                var ourHwnd = TryGetWebViewHwnd();
-                if (ourHwnd != IntPtr.Zero)
+                var innerHwnd = TryGetWebViewHwnd();
+                if (innerHwnd != IntPtr.Zero)
                 {
-                    if (GetClientRect(ourHwnd, out RECT r))
+                    // Walk up to the wrapper HWND whose parent is the TopLevel. The wrapper
+                    // can paint over the inner's rounded clip if it isn't itself clipped,
+                    // so apply the region to BOTH when they differ.
+                    IntPtr outerHwnd = innerHwnd;
+                    try
                     {
-                        int w = r.Right - r.Left;
-                        int h = r.Bottom - r.Top;
-                        if (w > 50 && h > 50)
+                        while (true)
                         {
-                            IntPtr rgn = CreateRoundRectRgn(0, 0, w + 1, h + 1, diameter, diameter);
-                            SetWindowRgn(ourHwnd, rgn, true);
+                            var parent = GetParent(outerHwnd);
+                            if (parent == IntPtr.Zero || parent == parentHwnd) break;
+                            outerHwnd = parent;
                         }
                     }
+                    catch { }
+
+                    ApplyRoundedRgn(outerHwnd, diameter);
+                    if (outerHwnd != innerHwnd) ApplyRoundedRgn(innerHwnd, diameter);
                 }
                 else
                 {
@@ -831,16 +860,7 @@ namespace spotify
                     IntPtr child = FindWindowEx(parentHwnd, IntPtr.Zero, null, null);
                     while (child != IntPtr.Zero)
                     {
-                        if (GetClientRect(child, out RECT r))
-                        {
-                            int w = r.Right - r.Left;
-                            int h = r.Bottom - r.Top;
-                            if (w > 50 && h > 50)
-                            {
-                                IntPtr rgn = CreateRoundRectRgn(0, 0, w + 1, h + 1, diameter, diameter);
-                                SetWindowRgn(child, rgn, true);
-                            }
-                        }
+                        ApplyRoundedRgn(child, diameter);
                         child = FindWindowEx(parentHwnd, child, null, null);
                     }
                 }
@@ -849,6 +869,16 @@ namespace spotify
             {
                 Console.WriteLine($"[Spotify] ApplyWebViewRoundedCorners failed: {ex.Message}");
             }
+        }
+
+        private static void ApplyRoundedRgn(IntPtr hwnd, int diameter)
+        {
+            if (!GetClientRect(hwnd, out RECT r)) return;
+            int w = r.Right - r.Left;
+            int h = r.Bottom - r.Top;
+            if (w <= 50 || h <= 50) return;
+            IntPtr rgn = CreateRoundRectRgn(0, 0, w + 1, h + 1, diameter, diameter);
+            SetWindowRgn(hwnd, rgn, true);
         }
 
         // Two-step relayout when a parent RenderTransform changes:
@@ -1074,88 +1104,60 @@ namespace spotify
                         // Only attempt to apply if cache is unknown or it changed enough to matter
                         if (double.IsNaN(_lastAppliedVisualZoom) || Math.Abs(zoomVal - _lastAppliedVisualZoom) > 0.001)
                         {
-                            // First, try to get controller.CoreWebView2 and set its ZoomFactor property
-                            var coreProp = controllerType.GetProperty("CoreWebView2");
-                            if (coreProp != null)
+                            // ZoomFactor lives on CoreWebView2Controller, NOT on the inner CoreWebView2.
+                            // The previous order (CoreWebView2 first, controller as fallback) silently no-opped
+                            // because CoreWebView2.GetProperty("ZoomFactor") returns null but coreProp itself is
+                            // non-null, so the working controller branch was never reached.
+                            bool applied = false;
+                            var zoomPropOnController = controllerType.GetProperty("ZoomFactor");
+                            if (zoomPropOnController != null && zoomPropOnController.PropertyType == typeof(double))
                             {
-                                var core = coreProp.GetValue(controller);
-                                if (core != null)
+                                try
                                 {
-                                    var coreType = core.GetType();
-                                    var zoomProp = coreType.GetProperty("ZoomFactor");
-                                    if (zoomProp != null && zoomProp.PropertyType == typeof(double))
-                                    {
-                                        zoomProp.SetValue(core, zoomVal);
-                                    }
-                                    else
-                                    {
-                                        var setZoomMethod = coreType.GetMethod("SetZoomFactor") ?? coreType.GetMethod("SetZoom");
-                                        if (setZoomMethod != null)
-                                        {
-                                            var ptypes = setZoomMethod.GetParameters();
-                                            if (ptypes.Length == 1)
-                                            {
-                                                var argType = ptypes[0].ParameterType;
-                                                var conv = Convert.ChangeType(zoomVal, argType);
-                                                setZoomMethod.Invoke(core, new object[] { conv });
-                                            }
-                                        }
-                                    }
-                                    // Try to read back the actual zoom and cache it
-                                    try
-                                    {
-                                        var readBackProp = coreType.GetProperty("ZoomFactor");
-                                        if (readBackProp != null && readBackProp.PropertyType == typeof(double))
-                                        {
-                                            var rb = readBackProp.GetValue(core);
-                                            if (rb is double d) _lastAppliedVisualZoom = d;
-                                            else _lastAppliedVisualZoom = zoomVal;
-                                        }
-                                        else _lastAppliedVisualZoom = zoomVal;
-                                    }
-                                    catch { _lastAppliedVisualZoom = zoomVal; }
-                                    // If reading back didn't reflect the desired zoom, try a JS fallback
-                                    try
-                                    {
-                                        if (Math.Abs(_lastAppliedVisualZoom - zoomVal) > 0.01)
-                                        {
-                                            var exec = coreType.GetMethod("ExecuteScriptAsync", new[] { typeof(string) });
-                                            if (exec != null)
-                                            {
-                                                string script = $"(function(){{document.documentElement.style.zoom='{zoomVal}'; document.body.style.zoom='{zoomVal}';}})();";
-                                                try { exec.Invoke(core, new object[] { script }); }
-                                                catch { /* best-effort */ }
-                                                _lastAppliedVisualZoom = zoomVal; // assume success to avoid loops
-                                            }
-                                        }
-                                    }
-                                    catch { }
+                                    zoomPropOnController.SetValue(controller, zoomVal);
+                                    var rb = zoomPropOnController.GetValue(controller);
+                                    _lastAppliedVisualZoom = rb is double d ? d : zoomVal;
+                                    applied = Math.Abs(_lastAppliedVisualZoom - zoomVal) < 0.01;
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[Spotify] controller.ZoomFactor set failed: {ex.Message}");
                                 }
                             }
                             else
                             {
-                                // Fallback: try on the controller object itself
-                                var zoomProp = controllerType.GetProperty("ZoomFactor");
-                                if (zoomProp != null && zoomProp.PropertyType == typeof(double))
+                                var setZoomMethod = controllerType.GetMethod("SetZoomFactor") ?? controllerType.GetMethod("SetZoom");
+                                if (setZoomMethod != null && setZoomMethod.GetParameters().Length == 1)
                                 {
-                                    zoomProp.SetValue(controller, zoomVal);
-                                    try { var rb = zoomProp.GetValue(controller); if (rb is double d) _lastAppliedVisualZoom = d; else _lastAppliedVisualZoom = zoomVal; } catch { _lastAppliedVisualZoom = zoomVal; }
-                                }
-                                else
-                                {
-                                    var setZoomMethod = controllerType.GetMethod("SetZoomFactor") ?? controllerType.GetMethod("SetZoom");
-                                    if (setZoomMethod != null)
+                                    try
                                     {
-                                        var ptypes = setZoomMethod.GetParameters();
-                                        if (ptypes.Length == 1)
-                                        {
-                                            var argType = ptypes[0].ParameterType;
-                                            var conv = Convert.ChangeType(zoomVal, argType);
-                                            setZoomMethod.Invoke(controller, new object[] { conv });
-                                            _lastAppliedVisualZoom = zoomVal;
-                                        }
+                                        var conv = Convert.ChangeType(zoomVal, setZoomMethod.GetParameters()[0].ParameterType);
+                                        setZoomMethod.Invoke(controller, new object[] { conv });
+                                        _lastAppliedVisualZoom = zoomVal;
+                                        applied = true;
+                                    }
+                                    catch { }
+                                }
+                            }
+
+                            // Last resort: CSS zoom via JS. Doesn't replace ZoomFactor but at least
+                            // scales the page content if the wrapped controller doesn't expose it.
+                            if (!applied)
+                            {
+                                try
+                                {
+                                    var coreProp = controllerType.GetProperty("CoreWebView2");
+                                    var core = coreProp?.GetValue(controller);
+                                    var exec = core?.GetType().GetMethod("ExecuteScriptAsync", new[] { typeof(string) });
+                                    if (exec != null && core != null)
+                                    {
+                                        var zStr = zoomVal.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                        var script = $"(function(){{document.documentElement.style.zoom='{zStr}'; document.body.style.zoom='{zStr}';}})();";
+                                        exec.Invoke(core, new object[] { script });
+                                        _lastAppliedVisualZoom = zoomVal;
                                     }
                                 }
+                                catch { }
                             }
                         }
                      }

@@ -6,7 +6,7 @@
             Padding="0"
             Width="230"
             Height="350"
-            CornerRadius="10"
+            CornerRadius="0"
             ClipToBounds="True">
         <Grid>
             <!-- WebView is created reflectively in OnAttachedToVisualTree to avoid
@@ -33,7 +33,7 @@
                     VerticalAlignment="Bottom"
                     Margin="8"
                     Background="#DD1A1A1A"
-                    CornerRadius="10"
+                    CornerRadius="0"
                     Padding="12,10"
                     ZIndex="200">
                 <StackPanel Spacing="8">

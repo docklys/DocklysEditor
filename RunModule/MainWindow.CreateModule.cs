@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -57,6 +58,11 @@ public partial class MainWindow
             return;
         }
 
+        // Step 1: pick which existing module to use as a template.
+        var templateName = await PromptForTemplateName(solutionDir);
+        if (templateName == null) return;
+
+        // Step 2: pick name + tile size for the new module.
         var spec = await PromptForNewModuleSpec();
         if (spec == null) return;
         var name = spec.Name;
@@ -71,15 +77,13 @@ public partial class MainWindow
         string targetDir = Path.Combine(solutionDir, name);
         try
         {
-            CloneDefaultModuleInto(solutionDir, targetDir, name, spec.TileWidth, spec.TileHeight);
+            CloneModuleInto(solutionDir, targetDir, name, spec.TileWidth, spec.TileHeight, templateName);
         }
         catch (Exception ex)
         {
-            // Best-effort rollback so a half-cloned folder doesn't poison
-            // the next attempt with the same name.
             TryDeleteDirectory(targetDir);
             await ShowMessageDialog("Scaffold failed",
-                $"Failed to clone DefaultModule:\n\n{ex.GetType().Name}: {ex.Message}");
+                $"Failed to clone '{templateName}':\n\n{ex.GetType().Name}: {ex.Message}");
             return;
         }
 
@@ -87,19 +91,13 @@ public partial class MainWindow
         var newProj = Path.Combine(targetDir, name + ".csproj");
         var slnNote = await TryAddToSolution(slnPath, newProj);
 
-        // Build the new project so a fresh DLL exists for catalog
-        // discovery. Without this the next ReloadCatalog would skip the
-        // new folder (no DLL = nothing to load).
         var buildNote = await TryBuildProject(newProj);
 
-        // Refresh the catalog and jump straight to the newly-created module.
-        // This is what makes "newly created modules work instantly" — the
-        // user sees their module on screen immediately, no app restart.
         ReloadCatalogAndSelect(name);
 
         var pxW = PixelsForTiles(spec.TileWidth);
         var pxH = PixelsForTiles(spec.TileHeight);
-        var msg = $"Module '{name}' created at:\n{targetDir}\n\n" +
+        var msg = $"Module '{name}' created from template '{templateName}' at:\n{targetDir}\n\n" +
                   $"Tile footprint: {spec.TileWidth}×{spec.TileHeight} ({pxW}×{pxH} px)";
         if (slnNote != null) msg += $"\n\nSolution note: {slnNote}";
         if (buildNote != null) msg += $"\n\nBuild note: {buildNote}\n" +
@@ -200,42 +198,41 @@ public partial class MainWindow
         return null;
     }
 
-    private static void CloneDefaultModuleInto(
+    private static void CloneModuleInto(
         string solutionDir,
         string targetDir,
         string newName,
         int tileWidth,
-        int tileHeight)
+        int tileHeight,
+        string templateName)
     {
-        var sourceDir = Path.Combine(solutionDir, "DefaultModule");
+        var sourceDir = Path.Combine(solutionDir, templateName);
         if (!Directory.Exists(sourceDir))
             throw new DirectoryNotFoundException(
-                $"DefaultModule template folder not found at: {sourceDir}");
+                $"Template folder not found at: {sourceDir}");
         if (Directory.Exists(targetDir))
             throw new IOException($"Target folder already exists: {targetDir}");
 
         Directory.CreateDirectory(targetDir);
-        CopyDirectoryFiltered(sourceDir, targetDir, newName);
+        CopyDirectoryFiltered(sourceDir, targetDir, templateName, newName);
 
-        // Rename DefaultModule.* files (csproj, axaml, axaml.cs, …) to
-        // <NewName>.* — the text inside already had the identifier rewritten
-        // by CopyDirectoryFiltered.
+        // Rename <TemplateName>.* files to <NewName>.* — the text inside was
+        // already rewritten by CopyDirectoryFiltered.
         foreach (var pattern in new[] { "*.csproj", "*.axaml", "*.axaml.cs", "*.cs" })
         {
             foreach (var file in Directory.GetFiles(targetDir, pattern, SearchOption.AllDirectories))
             {
                 var baseName = Path.GetFileName(file);
-                if (baseName.StartsWith("DefaultModule", StringComparison.Ordinal))
+                if (baseName.StartsWith(templateName, StringComparison.Ordinal))
                 {
-                    var newBase = newName + baseName.Substring("DefaultModule".Length);
+                    var newBase = newName + baseName.Substring(templateName.Length);
                     var newPath = Path.Combine(Path.GetDirectoryName(file)!, newBase);
                     File.Move(file, newPath);
                 }
             }
         }
 
-        // Patch the tile size. Template defaults are 1×1 (Width/Height=110,
-        // TileWidth/Height=>1); rewrite to the dev's chosen footprint.
+        // Patch the tile size to the dev's chosen footprint.
         var pixelWidth = PixelsForTiles(tileWidth);
         var pixelHeight = PixelsForTiles(tileHeight);
         foreach (var file in Directory.GetFiles(targetDir, "*", SearchOption.AllDirectories))
@@ -258,7 +255,7 @@ public partial class MainWindow
         }
     }
 
-    private static void CopyDirectoryFiltered(string src, string dst, string newName)
+    private static void CopyDirectoryFiltered(string src, string dst, string templateName, string newName)
     {
         foreach (var entry in Directory.EnumerateFileSystemEntries(src))
         {
@@ -270,7 +267,7 @@ public partial class MainWindow
             if (Directory.Exists(entry))
             {
                 Directory.CreateDirectory(targetPath);
-                CopyDirectoryFiltered(entry, targetPath, newName);
+                CopyDirectoryFiltered(entry, targetPath, templateName, newName);
             }
             else
             {
@@ -281,14 +278,15 @@ public partial class MainWindow
                 else
                 {
                     var text = File.ReadAllText(entry);
-                    // Internal identifier swap. The template uses DefaultModule
-                    // as the namespace + class + AssemblyName, BlackModule as
-                    // the IModule.Id placeholder, and "Default Module" as the
-                    // user-facing display name. Replacing all three gives a
-                    // self-consistent scaffold the user can run immediately.
-                    text = text.Replace("DefaultModule", newName);
-                    text = text.Replace("BlackModule", newName);
-                    text = text.Replace("\"Default Module\"", "\"" + newName + "\"");
+                    // Replace the template's identifier (namespace, class, AssemblyName,
+                    // display name string) with the new module's name.
+                    text = text.Replace(templateName, newName);
+                    // DefaultModule-specific aliases used in its scaffold.
+                    if (templateName == "DefaultModule")
+                    {
+                        text = text.Replace("BlackModule", newName);
+                        text = text.Replace("\"Default Module\"", "\"" + newName + "\"");
+                    }
                     File.WriteAllText(targetPath, text);
                 }
             }
@@ -365,6 +363,123 @@ public partial class MainWindow
     // Built inline rather than using MessageBox.Avalonia's input API
     // because that package's input-prompt class name moved between v2 and
     // v3, and we want this to work against whatever is referenced today.
+
+    // Step-1 dialog: show all module folders as templates so the user can
+    // pick one to copy. DefaultModule (the blank scaffold) is always listed
+    // first regardless of alphabetical order.
+    private async Task<string?> PromptForTemplateName(string solutionDir)
+    {
+        // Collect every sibling project folder that has a matching .csproj,
+        // using the same exclusion list as the catalog scanner.
+        var names = new List<string>();
+        foreach (var folder in Directory.EnumerateDirectories(solutionDir)
+                                        .OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase))
+        {
+            var folderName = Path.GetFileName(folder);
+            if (NonModuleFolders.Contains(folderName)) continue;
+            if (folderName.StartsWith(".", StringComparison.Ordinal)) continue;
+            if (!File.Exists(Path.Combine(folder, folderName + ".csproj"))) continue;
+            names.Add(folderName);
+        }
+
+        // Ensure DefaultModule is always available even if absent from the scan.
+        if (!names.Contains("DefaultModule", StringComparer.OrdinalIgnoreCase))
+            names.Insert(0, "DefaultModule");
+
+        var tcs = new TaskCompletionSource<string?>();
+
+        // Build one item per template: bold name + small hint for DefaultModule.
+        var items = names.Select(n =>
+        {
+            var label = n == "DefaultModule" ? $"{n}  (blank template)" : n;
+            return new TextBlock
+            {
+                Text = label,
+                FontSize = 13,
+                Padding = new Thickness(6, 4),
+                Foreground = Brushes.White,
+            };
+        }).ToList<Control>();
+
+        var listBox = new ListBox
+        {
+            ItemsSource = items,
+            SelectedIndex = 0,
+            MinHeight = 120,
+            MaxHeight = 320,
+            Background = new SolidColorBrush(Color.Parse("#111111")),
+        };
+
+        var okBtn = new Button
+        {
+            Content = "Use as Template",
+            IsDefault = true,
+            Padding = new Thickness(16, 4),
+        };
+        var cancel = new Button
+        {
+            Content = "Cancel",
+            IsCancel = true,
+            Padding = new Thickness(16, 4),
+            Margin = new Thickness(8, 0, 0, 0),
+        };
+
+        var window = new Window
+        {
+            Title = "Choose Template",
+            Width = 400,
+            MinWidth = 300,
+            MinHeight = 200,
+            SizeToContent = SizeToContent.Height,
+            CanResize = true,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                Spacing = 8,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Select a module to copy as a starting point:",
+                        Foreground = Brushes.White,
+                        TextWrapping = TextWrapping.Wrap,
+                    },
+                    listBox,
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Children = { okBtn, cancel },
+                    },
+                },
+            },
+        };
+        StyleDialog(window);
+
+        okBtn.Click += (_, _) =>
+        {
+            var idx = listBox.SelectedIndex;
+            tcs.TrySetResult(idx >= 0 && idx < names.Count ? names[idx] : null);
+            window.Close();
+        };
+        cancel.Click += (_, _) => { tcs.TrySetResult(null); window.Close(); };
+        window.Closed += (_, _) => tcs.TrySetResult(null);
+
+        // Double-click also confirms.
+        listBox.DoubleTapped += (_, _) =>
+        {
+            var idx = listBox.SelectedIndex;
+            if (idx >= 0 && idx < names.Count)
+            {
+                tcs.TrySetResult(names[idx]);
+                window.Close();
+            }
+        };
+
+        await window.ShowDialog(this);
+        return await tcs.Task;
+    }
 
     // Richer Create dialog: name + tile width + tile height. No upper limit
     // on the tile dimensions — devs can scaffold a 50×50 module if they
