@@ -23,4 +23,13 @@
         event Action<int, int>? TileResizeRequested;
         void SetTileSize(int width, int height);
     }
+
+    // Modules that host native HWNDs (e.g. WebView2) implement this so the host can
+    // hide the HWND while the settings panel is open, preventing the native window from
+    // stealing pointer events during drag/reposition and in the module-list preview.
+    public interface IInteractionFreezable
+    {
+        void FreezeInteraction();
+        void UnfreezeInteraction();
+    }
 }

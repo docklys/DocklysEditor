@@ -14,7 +14,7 @@ using System.Runtime.InteropServices;
 
 namespace spotify
 {
-    public partial class spotify : UserControl, IModule, IResizable
+    public partial class spotify : UserControl, IModule, IResizable, IInteractionFreezable
     {
         // IModule
         public string Id => "spotify";
@@ -23,8 +23,8 @@ namespace spotify
         public string Category => "Media";
         public string[] Tags => new[] { "spotify", "music", "streaming" };
 
-        public int TileWidth => 2;
-        public int TileHeight => 3;
+        public int PreferredTileWidth => 2;
+        public int PreferredTileHeight => 3;
 
         public string MinAppVersion => "1.0.0";
         public string MaxAppVersion => "2.0.0";
@@ -164,7 +164,7 @@ namespace spotify
                                     var transform = (_webView ?? (Control)this).TransformToVisual(top);
                                     var local = (_webView ?? (Control)this).Bounds;
                                     var composed = transform.HasValue ? transform.Value : Matrix.Identity;
-                                    if (top.RenderTransform != null) composed = top.RenderTransform.Value * composed;
+                                    if (top.RenderTransform != null) composed = composed * top.RenderTransform.Value;
                                     var vr = new Rect(0,0, local.Width, local.Height).TransformToAABB(composed);
                                     var scaling = top.RenderScaling;
                                     int tx = (int)(vr.X * scaling);
@@ -202,6 +202,41 @@ namespace spotify
         private bool _inTriggerZone;
         private TopLevel? _topLevel;
         private bool _webViewCreated;
+        private bool _isFrozen;
+
+        // IInteractionFreezable — hide the native WebView HWND so it can't steal pointer
+        // events while the host settings panel is open, and skip WebView creation entirely
+        // for preview-tile instances that are frozen before they attach to the visual tree.
+        public void FreezeInteraction()
+        {
+            _isFrozen = true;
+            _continuousSyncTimer?.Stop();
+            _continuousSyncTimer = null;
+            if (_webView != null) _webView.IsVisible = false;
+            if (OperatingSystem.IsWindows() && _webViewHwnd != IntPtr.Zero)
+                ShowWindow(_webViewHwnd, 0); // SW_HIDE
+        }
+
+        public void UnfreezeInteraction()
+        {
+            _isFrozen = false;
+            // If we skipped WebView creation because we were frozen before attach, create it now.
+            if (_topLevel != null && _webView == null && !_webViewCreated)
+            {
+                _webViewCreated = true;
+                TryCreateWebView();
+            }
+            if (_webView != null)
+            {
+                _webView.IsVisible = true;
+                Dispatcher.UIThread.Post(() =>
+                {
+                    try { ForceWebViewRelayout(); SyncWebViewHwndToVisualBounds(); ApplyWebViewRoundedCorners(); }
+                    catch { }
+                }, DispatcherPriority.Background);
+            }
+            StartContinuousSync();
+        }
 
         private const string SpotifyUrl = "https://open.spotify.com/";
 
@@ -259,7 +294,7 @@ namespace spotify
                     }, DispatcherPriority.Background);
                 }));
 
-            if (!_webViewCreated)
+            if (!_webViewCreated && !_isFrozen)
             {
                 _webViewCreated = true;
                 TryCreateWebView();
@@ -367,7 +402,7 @@ namespace spotify
                             var local = _webView.Bounds;
                             if (local.Width <= 0 || local.Height <= 0) return;
                             var composed = transform.Value;
-                            if (top.RenderTransform != null) composed = top.RenderTransform.Value * composed;
+                            if (top.RenderTransform != null) composed = composed * top.RenderTransform.Value;
                             var visualRect = new Rect(0, 0, local.Width, local.Height).TransformToAABB(composed);
                             var scaling = top.RenderScaling;
                             int w = Math.Max(1, (int)(visualRect.Width * scaling));
@@ -945,7 +980,7 @@ namespace spotify
                 var m = cornerTransform.Value;
                 if (topLevel.RenderTransform != null)
                 {
-                    try { m = topLevel.RenderTransform.Value * cornerTransform.Value; } catch { }
+                    try { m = cornerTransform.Value * topLevel.RenderTransform.Value; } catch { }
                 }
                 var p0 = m.Transform(new Point(0, 0));
                 var p1 = m.Transform(new Point(1, 0));
@@ -1065,16 +1100,17 @@ namespace spotify
             Console.WriteLine($"[Spotify] SyncWebViewHwndToVisualBounds: localBounds={local.Width}x{local.Height}");
 
             // TransformToVisual returns local->topLevel excluding the TopLevel's own RenderTransform.
-            // Compose the TopLevel.RenderTransform (if present) so we measure the final transformed
-            // visual rect and scale consistently (handles ScaleTransform, TranslateTransform, Matrix, etc.).
+            // Compose it after (right-multiply) so the full local→visual pipeline is correct.
+            // In Avalonia's convention, A*B applies A first then B, so:
+            //   transform.Value * topLevel.RenderTransform.Value
+            //   = (local→topLevel layout) then (topLevel layout→visual)
+            // The wrong order (topLevel.RenderTransform * transform) would apply the window
+            // translation to local coords before the Viewbox scale, shrinking the offset by
+            // the Viewbox scale factor and producing a left-shifted HWND.
             var composedMatrix = transform.Value;
             if (topLevel.RenderTransform != null)
             {
-                try
-                {
-                    // combined = topLevel.RenderTransform * transform
-                    composedMatrix = topLevel.RenderTransform.Value * transform.Value;
-                }
+                try { composedMatrix = transform.Value * topLevel.RenderTransform.Value; }
                 catch { composedMatrix = transform.Value; }
             }
 
@@ -1431,6 +1467,9 @@ namespace spotify
                  return IntPtr.Zero;
              }
          }
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
