@@ -973,10 +973,10 @@ namespace spotify
 
             double scaling = topLevel.RenderScaling;
 
-            // Match the outer Avalonia Border's visual radius: it's CornerRadius=9 in
-            // logical units. Since the WebView is shrunk by 5% (creating a gap of ~6px
-            // on each side at default size), we use a smaller concentric radius of 3
-            // for the inner WebView HWND to look correct.
+            // Match the outer Avalonia Border's visual radius: it's CornerRadius=10 in
+            // logical units. Since the WebView is inset by WebViewPadding=6 (creating
+            // a uniform gap on all sides), we use a smaller concentric radius of 4
+            // for the inner WebView HWND to look correct (10 - 6 = 4).
             double visualScale = 1.0;
             var cornerTransform = this.TransformToVisual(topLevel);
             if (cornerTransform.HasValue)
@@ -995,7 +995,7 @@ namespace spotify
                     visualScale = (sx + sy) / 2.0;
             }
 
-            int diameter = Math.Max(2, (int)(3 * scaling * visualScale * 2));
+            int diameter = Math.Max(2, (int)(4 * scaling * visualScale * 2));
 
             try
             {
