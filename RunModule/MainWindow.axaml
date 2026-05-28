@@ -15,17 +15,6 @@
         Background="#1A1A1A"
         Foreground="White">
     <Window.Resources>
-        <!-- Re-point Avalonia's Fluent accent palette to neutral grays so
-             the theme's default blue/teal highlights (focus rings, slider
-             progress, ComboBox selection accents, etc.) come out
-             monochrome to match the rest of the chrome. -->
-        <Color x:Key="SystemAccentColor">#888888</Color>
-        <Color x:Key="SystemAccentColorLight1">#9A9A9A</Color>
-        <Color x:Key="SystemAccentColorLight2">#ABABAB</Color>
-        <Color x:Key="SystemAccentColorLight3">#BCBCBC</Color>
-        <Color x:Key="SystemAccentColorDark1">#777777</Color>
-        <Color x:Key="SystemAccentColorDark2">#666666</Color>
-        <Color x:Key="SystemAccentColorDark3">#555555</Color>
     </Window.Resources>
     <Window.Styles>
         <!-- Zoom slider thumb: solid white pill to match the b/w palette. -->
@@ -377,6 +366,48 @@
                     ToolTip.Tip="Next module">
                 <Path Data="M 0 0 L 12 16 L 0 32" />
             </Button>
+
+            <!-- ═════════ Theme Settings Overlay ═════════ -->
+            <Border Name="ThemeSettingsOverlay"
+                    IsVisible="False"
+                    Background="{DynamicResource ColorModuleColor}"
+                    Width="280"
+                    HorizontalAlignment="Left"
+                    BorderBrush="{DynamicResource ColorModuleFont}"
+                    BorderThickness="0,0,1,0"
+                    ZIndex="1000">
+                <Grid RowDefinitions="Auto, *, Auto" Margin="16">
+                    <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,12">
+                        <TextBlock Text="THEME SETTINGS" 
+                                   FontSize="13" 
+                                   FontWeight="Bold" 
+                                   Foreground="{DynamicResource ColorModuleFont}"/>
+                        <TextBlock Text="Edit global color resources" 
+                                   FontSize="10" 
+                                   Opacity="0.6"
+                                   Foreground="{DynamicResource ColorModuleFont}"/>
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="1" Margin="0,0,0,12">
+                        <StackPanel Name="ThemeColorsContainer" Spacing="6">
+                            <!-- Dynamic color entries will be added here from C# -->
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                        <Button Content="Reset" 
+                                FontSize="10"
+                                Background="Transparent"
+                                Foreground="{DynamicResource ColorModuleFont}"
+                                Click="ResetTheme_Click"/>
+                        <Button Content="Close" 
+                                FontSize="10"
+                                Background="{DynamicResource ColorAccent}"
+                                Foreground="{DynamicResource ColorModuleFont}"
+                                Click="CloseTheme_Click"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
         </Grid>
 
         <!-- ═════════ Bottom bar: lifecycle | deploy | artifacts ═════════
@@ -399,6 +430,16 @@
                             Content="↺ Reload"
                             Click="ReloadModule_Click"
                             ToolTip.Tip="Re-instantiate the active module"/>
+                    <Button Name="ThemeButton"
+                            Content="🎨 Theme"
+                            Background="{DynamicResource ColorAccent}"
+                            Foreground="{DynamicResource ColorModuleFont}"
+                            FontSize="11"
+                            Padding="10,2"
+                            Height="26"
+                            CornerRadius="3"
+                            Click="ThemeButton_Click"
+                            ToolTip.Tip="Customize the global theme colors"/>
                 </StackPanel>
 
                 <!-- Deploy (center, primary styling) -->

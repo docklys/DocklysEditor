@@ -5,7 +5,7 @@
     <Border Background="{DynamicResource ColorModuleColor}"
             Padding="0"
             Width="230"
-            Height="350"
+            Height="230"
             CornerRadius="10"
             ClipToBounds="True">
         <Grid>
@@ -16,94 +16,113 @@
                   HorizontalAlignment="Stretch"
                   VerticalAlignment="Stretch" />
 
-            <!-- Invisible trigger zone in the bottom-right corner.
-                 When Shift is held and the cursor is here, the resize overlay shows. -->
-            <Border x:Name="ResizeTriggerZone"
-                    Width="44"
-                    Height="44"
+            <!-- Settings Button (dot) in right-side gap (to avoid HWND overlap) -->
+            <Button x:Name="SettingsButton"
                     HorizontalAlignment="Right"
-                    
                     VerticalAlignment="Bottom"
-                    Background="Transparent"
-                    ZIndex="10" />
+                    Margin="0,0,0,20"
+                    Width="5" Height="5"
+                    CornerRadius="2.5"
+                    Background="{DynamicResource ColorAccent}"
+                    Padding="0"
+                    BorderThickness="0"
+                    ZIndex="1000" />
 
-            <!-- Resize overlay: appears when Shift is held in the trigger zone -->
-            <Border x:Name="ResizeOverlay"
+            <!-- Full-cover settings overlay -->
+            <Border x:Name="SettingsOverlay"
                     IsVisible="False"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Bottom"
-                    Margin="8"
-                    Background="#DD1A1A1A"
-                    CornerRadius="10"
-                    Padding="12,10"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch"
+                    Background="{DynamicResource ColorModuleColor}"
+                    Opacity="0.95"
                     ZIndex="200">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="TILE SIZE"
-                               Foreground="#AAAAAA"
-                               FontSize="9"
-                               LetterSpacing="1"
-                               HorizontalAlignment="Center" />
-
-                    <!-- Width row -->
-                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
-                        <TextBlock Text="W"
-                                   Foreground="#888888"
+                <Viewbox Stretch="Uniform" Margin="8">
+                    <StackPanel Spacing="10" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="SETTINGS"
+                                   Foreground="{DynamicResource ColorModuleFont}"
                                    FontSize="10"
-                                   VerticalAlignment="Center"
-                                   Width="10" />
-                        <Button x:Name="WidthMinus"
-                                Content="−"
-                                Width="26" Height="26"
-                                FontSize="16"
-                                Padding="0"
-                                HorizontalContentAlignment="Center"
-                                VerticalContentAlignment="Center" />
-                        <TextBlock x:Name="WidthDisplay"
-                                   Width="22"
-                                   TextAlignment="Center"
-                                   Foreground="White"
-                                   FontSize="14"
                                    FontWeight="Bold"
-                                   VerticalAlignment="Center" />
-                        <Button x:Name="WidthPlus"
-                                Content="+"
-                                Width="26" Height="26"
-                                FontSize="16"
-                                Padding="0"
-                                HorizontalContentAlignment="Center"
-                                VerticalContentAlignment="Center" />
-                    </StackPanel>
+                                   LetterSpacing="2"
+                                   Opacity="0.6"
+                                   HorizontalAlignment="Center" />
 
-                    <!-- Height row -->
-                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
-                        <TextBlock Text="H"
-                                   Foreground="#888888"
-                                   FontSize="10"
-                                   VerticalAlignment="Center"
-                                   Width="10" />
-                        <Button x:Name="HeightMinus"
-                                Content="−"
-                                Width="26" Height="26"
-                                FontSize="16"
-                                Padding="0"
-                                HorizontalContentAlignment="Center"
-                                VerticalContentAlignment="Center" />
-                        <TextBlock x:Name="HeightDisplay"
-                                   Width="22"
-                                   TextAlignment="Center"
-                                   Foreground="White"
-                                   FontSize="14"
-                                   FontWeight="Bold"
-                                   VerticalAlignment="Center" />
-                        <Button x:Name="HeightPlus"
-                                Content="+"
-                                Width="26" Height="26"
-                                FontSize="16"
-                                Padding="0"
-                                HorizontalContentAlignment="Center"
-                                VerticalContentAlignment="Center" />
+                        <Border Background="{DynamicResource ColorAccent}" 
+                                CornerRadius="6" 
+                                Padding="12,8"
+                                BorderBrush="{DynamicResource ColorModuleFont}"
+                                BorderThickness="1">
+                            <StackPanel Spacing="10">
+                                <!-- Width row -->
+                                <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
+                                    <Button x:Name="WidthMinus"
+                                            Content="−"
+                                            Width="24" Height="24"
+                                            FontSize="16"
+                                            Padding="0"
+                                            Background="Transparent"
+                                            Foreground="{DynamicResource ColorModuleFont}"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center" />
+                                    <TextBlock x:Name="WidthDisplay"
+                                               Width="24"
+                                               TextAlignment="Center"
+                                               Foreground="{DynamicResource ColorModuleFont}"
+                                               FontSize="16"
+                                               FontWeight="Bold"
+                                               VerticalAlignment="Center" />
+                                    <Button x:Name="WidthPlus"
+                                            Content="+"
+                                            Width="24" Height="24"
+                                            FontSize="16"
+                                            Padding="0"
+                                            Background="Transparent"
+                                            Foreground="{DynamicResource ColorModuleFont}"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center" />
+                                </StackPanel>
+
+                                <!-- Height row -->
+                                <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
+                                    <Button x:Name="HeightMinus"
+                                            Content="−"
+                                            Width="24" Height="24"
+                                            FontSize="16"
+                                            Padding="0"
+                                            Background="Transparent"
+                                            Foreground="{DynamicResource ColorModuleFont}"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center" />
+                                    <TextBlock x:Name="HeightDisplay"
+                                               Width="24"
+                                               TextAlignment="Center"
+                                               Foreground="{DynamicResource ColorModuleFont}"
+                                               FontSize="16"
+                                               FontWeight="Bold"
+                                               VerticalAlignment="Center" />
+                                    <Button x:Name="HeightPlus"
+                                            Content="+"
+                                            Width="24" Height="24"
+                                            FontSize="16"
+                                            Padding="0"
+                                            Background="Transparent"
+                                            Foreground="{DynamicResource ColorModuleFont}"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        
+                        <Button x:Name="CloseSettingsButton"
+                                Content="DONE"
+                                HorizontalAlignment="Center"
+                                Background="{DynamicResource ColorAccent}"
+                                Foreground="{DynamicResource ColorModuleFont}"
+                                Padding="24,6"
+                                FontSize="11"
+                                CornerRadius="4"
+                                FontWeight="Bold"/>
                     </StackPanel>
-                </StackPanel>
+                </Viewbox>
             </Border>
         </Grid>
     </Border>

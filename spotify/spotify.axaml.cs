@@ -24,7 +24,7 @@ namespace spotify
         public string[] Tags => new[] { "spotify", "music", "streaming" };
 
         public int PreferredTileWidth => 2;
-        public int PreferredTileHeight => 3;
+        public int PreferredTileHeight => 2;
 
         public string MinAppVersion => "1.0.0";
         public string MaxAppVersion => "2.0.0";
@@ -199,23 +199,22 @@ namespace spotify
 
         private int _currentW = 2;
         private int _currentH = 3;
-        private bool _shiftDown;
-        private bool _inTriggerZone;
         private TopLevel? _topLevel;
         private bool _webViewCreated;
         private bool _isFrozen;
 
-        // IInteractionFreezable — hide the native WebView HWND so it can't steal pointer
-        // events while the host settings panel is open, and skip WebView creation entirely
-        // for preview-tile instances that are frozen before they attach to the visual tree.
+        // IInteractionFreezable — the dock settings panel is opening. The WebView must stay
+        // VISIBLE at all times (both in normal dock mode and while settings is open).
+        // Dragging is handled host-side via SharpHook (the global hook fires through the
+        // WebView HWND), so we do NOT hide the HWND. We also keep the 33Hz continuous sync
+        // running: it re-applies the WebView2 controller bounds + IsVisible=true every frame,
+        // which is required because AvaloniaWebView's NativeControlHost otherwise re-asserts
+        // stale (un-synced) bounds and the DComp surface goes black/misplaced.
         public void FreezeInteraction()
         {
             _isFrozen = true;
-            _continuousSyncTimer?.Stop();
-            _continuousSyncTimer = null;
-            if (_webView != null) _webView.IsVisible = false;
-            if (OperatingSystem.IsWindows() && _webViewHwnd != IntPtr.Zero)
-                ShowWindow(_webViewHwnd, 0); // SW_HIDE
+            if (_webView != null) _webView.IsVisible = true;
+            StartContinuousSync();
         }
 
         public void UnfreezeInteraction()
@@ -251,10 +250,29 @@ namespace spotify
             HeightMinus.Click += (_, _) => Adjust( 0, -1);
             HeightPlus.Click  += (_, _) => Adjust( 0, +1);
 
-            ResizeTriggerZone.PointerEntered += (_, _) => { _inTriggerZone = true;  SyncOverlay(); };
-            ResizeTriggerZone.PointerExited  += (_, _) => { _inTriggerZone = false; SyncOverlay(); };
+            SettingsButton.Click += (_, _) => ToggleSettings(true);
+            CloseSettingsButton.Click += (_, _) => ToggleSettings(false);
 
             RefreshSizeDisplay();
+        }
+        
+        private void ToggleSettings(bool show)
+        {
+            SettingsOverlay.IsVisible = show;
+            SettingsButton.IsVisible = !show;
+            if (show)
+            {
+                if (_webView != null) _webView.IsVisible = false;
+                if (OperatingSystem.IsWindows() && _webViewHwnd != IntPtr.Zero)
+                    ShowWindow(_webViewHwnd, 0); // SW_HIDE
+            }
+            else
+            {
+                if (_webView != null) _webView.IsVisible = true;
+                if (OperatingSystem.IsWindows() && _webViewHwnd != IntPtr.Zero)
+                    ShowWindow(_webViewHwnd, 5); // SW_SHOW
+                StartContinuousSync();
+            }
         }
 
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -262,11 +280,6 @@ namespace spotify
             base.OnAttachedToVisualTree(e);
 
             _topLevel = TopLevel.GetTopLevel(this);
-            if (_topLevel != null)
-            {
-                _topLevel.KeyDown += OnTopLevelKeyDown;
-                _topLevel.KeyUp   += OnTopLevelKeyUp;
-            }
 
             // Native HWNDs ignore Avalonia render transforms. NativeControlHost positions
             // the HWND inside its ArrangeOverride (which uses TransformToVisual → includes
@@ -535,21 +548,6 @@ namespace spotify
             WebViewContainer.Children.Add(panel);
         }
 
-        private void OnTopLevelKeyDown(object? sender, KeyEventArgs e)
-        {
-            if (e.Key is Key.LeftShift or Key.RightShift) { _shiftDown = true;  SyncOverlay(); }
-        }
-
-        private void OnTopLevelKeyUp(object? sender, KeyEventArgs e)
-        {
-            if (e.Key is Key.LeftShift or Key.RightShift) { _shiftDown = false; SyncOverlay(); }
-        }
-
-        private void SyncOverlay()
-        {
-            ResizeOverlay.IsVisible = _shiftDown && _inTriggerZone;
-        }
-
         private void Adjust(int dw, int dh)
         {
             int newW = Math.Max(1, Math.Min(8, _currentW + dw));
@@ -678,6 +676,9 @@ namespace spotify
         // operations (SetWindowPos, SetWindowRgn) target only this instance's HWND
         // instead of all children of the editor window (which breaks dual-view).
         private IntPtr _webViewHwnd = IntPtr.Zero;
+        private bool _shiftDown = false;
+        private void OnTopLevelKeyDown(object? s, Avalonia.Input.KeyEventArgs e) { if (e.Key == Avalonia.Input.Key.LeftShift || e.Key == Avalonia.Input.Key.RightShift) _shiftDown = true; }
+        private void OnTopLevelKeyUp(object? s, Avalonia.Input.KeyEventArgs e)   { if (e.Key == Avalonia.Input.Key.LeftShift || e.Key == Avalonia.Input.Key.RightShift) _shiftDown = false; }
         // Cache last applied visual zoom to avoid redundant sets and reduce races.
         // Start as NaN so the first set always applies.
         private double _lastAppliedVisualZoom = double.NaN;

@@ -166,7 +166,15 @@ public partial class MainWindow
 
         try
         {
+            var projFolder = Path.GetDirectoryName(entry.CsprojPath)!;
+            var (currentW, currentH) = ReadCurrentTileSize(projFolder);
+
             var instance = (Control)Activator.CreateInstance(entry.ModuleType)!;
+            if (instance is IResizable resizable)
+            {
+                resizable.TileResizeRequested += (w, h) => OnModuleResizeRequested(w, h);
+                resizable.SetTileSize(currentW, currentH);
+            }
             slot.Content = instance;
 
             if (nameLabel != null) nameLabel.Text = entry.FolderName;
@@ -180,6 +188,11 @@ public partial class MainWindow
                 if (_dualView)
                 {
                     var instance2 = (Control)Activator.CreateInstance(entry.ModuleType)!;
+                    if (instance2 is IResizable resizable2)
+                    {
+                        resizable2.TileResizeRequested += (w, h) => OnModuleResizeRequested(w, h);
+                        resizable2.SetTileSize(currentW, currentH);
+                    }
                     slot2.Content = instance2;
                     slot2.IsVisible = true;
                 }

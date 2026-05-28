@@ -16,8 +16,37 @@ namespace RunModule;
 // pre-populated), rewrites the source files, rebuilds, and hot-reloads.
 public partial class MainWindow
 {
-    private static readonly Regex TileWidthRegex  = new(@"TileWidth\s*=>\s*(\d+)", RegexOptions.Compiled);
-    private static readonly Regex TileHeightRegex = new(@"TileHeight\s*=>\s*(\d+)", RegexOptions.Compiled);
+    private static readonly Regex TileWidthRegex  = new(@"(?:Preferred)?TileWidth\s*=>\s*(\d+)", RegexOptions.Compiled);
+    private static readonly Regex TileHeightRegex = new(@"(?:Preferred)?TileHeight\s*=>\s*(\d+)", RegexOptions.Compiled);
+
+    private async void OnModuleResizeRequested(int width, int height)
+    {
+        if (_catalog.Count == 0) return;
+        var entry = _catalog[_currentIndex];
+        var projFolder = Path.GetDirectoryName(entry.CsprojPath)!;
+
+        var (currentW, currentH) = ReadCurrentTileSize(projFolder);
+        if (width == currentW && height == currentH) return;
+
+        try
+        {
+            ApplyTileSizeToSourceFiles(projFolder, currentW, currentH, width, height);
+            
+            // To provide a smooth "live" feel, we build and reload immediately.
+            // We use a small delay and check if the index hasn't changed to avoid
+            // redundant builds if the user clicks rapidly.
+            await Task.Delay(300);
+            if (_catalog.Count > _currentIndex && _catalog[_currentIndex].CsprojPath == entry.CsprojPath)
+            {
+                await TryBuildProject(entry.CsprojPath);
+                ReloadCatalogAndSelect(entry.FolderName);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Resize] OnModuleResizeRequested failed: {ex.Message}");
+        }
+    }
 
     private async void ChangeTileSize_Click(object? sender, RoutedEventArgs e)
     {
@@ -110,7 +139,9 @@ public partial class MainWindow
                     .Replace($"Width=\"{oldPxW}\"",  $"Width=\"{newPxW}\"")
                     .Replace($"Height=\"{oldPxH}\"", $"Height=\"{newPxH}\"")
                     .Replace($"TileWidth => {oldW};",  $"TileWidth => {newW};")
-                    .Replace($"TileHeight => {oldH};", $"TileHeight => {newH};");
+                    .Replace($"TileHeight => {oldH};", $"TileHeight => {newH};")
+                    .Replace($"PreferredTileWidth => {oldW};",  $"PreferredTileWidth => {newW};")
+                    .Replace($"PreferredTileHeight => {oldH};", $"PreferredTileHeight => {newH};");
                 if (rewritten != text) File.WriteAllText(file, rewritten);
             }
             catch (Exception ex)

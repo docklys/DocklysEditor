@@ -146,6 +146,7 @@ public sealed class SkinHost
         // search can't locate Dockly automatically. Remembering it means
         // the dev only picks once per machine.
         public string? DocklyInstallDir { get; set; }
+        public Dictionary<string, string>? ThemeColors { get; set; }
     }
 
     // Load-modify-write helpers, so saving one field doesn't wipe the others.
@@ -162,6 +163,15 @@ public sealed class SkinHost
             Console.WriteLine($"[SkinHost] Failed to read {PersistPath}: {ex.Message}");
             return new PersistedState();
         }
+    }
+
+    public static Dictionary<string, string>? LoadThemeColors() => LoadState().ThemeColors;
+
+    public static void SaveThemeColors(Dictionary<string, string> colors)
+    {
+        var s = LoadState();
+        s.ThemeColors = colors;
+        SaveState(s);
     }
 
     private static void SaveState(PersistedState state)
