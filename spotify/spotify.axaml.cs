@@ -167,10 +167,11 @@ namespace spotify
                                     if (top.RenderTransform != null) composed = composed * top.RenderTransform.Value;
                                     var vr = new Rect(0,0, local.Width, local.Height).TransformToAABB(composed);
                                     var scaling = top.RenderScaling;
-                                    int tx = (int)(vr.X * scaling);
-                                    int ty = (int)(vr.Y * scaling);
-                                    int tw = Math.Max(1, (int)(vr.Width * scaling));
-                                    int th = Math.Max(1, (int)(vr.Height * scaling));
+                                    double pad = WebViewPadding * scaling;
+                                    int tx = (int)(vr.X * scaling + pad);
+                                    int ty = (int)(vr.Y * scaling + pad);
+                                    int tw = Math.Max(1, (int)(vr.Width * scaling - pad * 2));
+                                    int th = Math.Max(1, (int)(vr.Height * scaling - pad * 2));
                                     Console.WriteLine($"[Spotify] Brute-force SetTileSize fallback: enumerating children of parentHwnd={parentHwnd} -> target {tx}x{ty}+{tw}x{th}");
                                     IntPtr child = FindWindowEx(parentHwnd, IntPtr.Zero, null, null);
                                     while (child != IntPtr.Zero)
@@ -239,6 +240,7 @@ namespace spotify
         }
 
         private const string SpotifyUrl = "https://open.spotify.com/";
+        private const double WebViewPadding = 6.0;
 
         public spotify()
         {
@@ -405,8 +407,9 @@ namespace spotify
                             if (top.RenderTransform != null) composed = composed * top.RenderTransform.Value;
                             var visualRect = new Rect(0, 0, local.Width, local.Height).TransformToAABB(composed);
                             var scaling = top.RenderScaling;
-                            int w = Math.Max(1, (int)(visualRect.Width * scaling));
-                            int h = Math.Max(1, (int)(visualRect.Height * scaling));
+                            double pad = WebViewPadding * scaling;
+                            int w = Math.Max(1, (int)(visualRect.Width * scaling - pad * 2));
+                            int h = Math.Max(1, (int)(visualRect.Height * scaling - pad * 2));
                             // Compute visual scale similar to SyncWebViewHwndToVisualBounds
                             double visualScale = 1.0;
                             try
@@ -970,9 +973,10 @@ namespace spotify
 
             double scaling = topLevel.RenderScaling;
 
-            // Match the outer Avalonia Border's visual radius: it's CornerRadius=10 in
-            // logical units, scaled by any ancestor RenderTransform/Viewbox. The HWND
-            // region is in physical pixels, so multiply by both DPI and that visual scale.
+            // Match the outer Avalonia Border's visual radius: it's CornerRadius=9 in
+            // logical units. Since the WebView is shrunk by 5% (creating a gap of ~6px
+            // on each side at default size), we use a smaller concentric radius of 3
+            // for the inner WebView HWND to look correct.
             double visualScale = 1.0;
             var cornerTransform = this.TransformToVisual(topLevel);
             if (cornerTransform.HasValue)
@@ -991,7 +995,7 @@ namespace spotify
                     visualScale = (sx + sy) / 2.0;
             }
 
-            int diameter = Math.Max(2, (int)(10 * scaling * visualScale * 2));
+            int diameter = Math.Max(2, (int)(3 * scaling * visualScale * 2));
 
             try
             {
@@ -1116,10 +1120,13 @@ namespace spotify
 
             var visualRect = new Rect(0, 0, local.Width, local.Height).TransformToAABB(composedMatrix);
             var scaling = topLevel.RenderScaling;
-            int x = (int)(visualRect.X * scaling);
-            int y = (int)(visualRect.Y * scaling);
-            int w = Math.Max(1, (int)(visualRect.Width * scaling));
-            int h = Math.Max(1, (int)(visualRect.Height * scaling));
+
+            // Apply WebViewPadding (fixed gap on all sides)
+            double pad = WebViewPadding * scaling;
+            int x = (int)(visualRect.X * scaling + pad);
+            int y = (int)(visualRect.Y * scaling + pad);
+            int w = Math.Max(1, (int)(visualRect.Width * scaling - pad * 2));
+            int h = Math.Max(1, (int)(visualRect.Height * scaling - pad * 2));
 
             // Extend the HWND by the Chromium scrollbar width so the scrollbar renders
             // off the right edge. SetWindowRgn (via ApplyWebViewRoundedCorners) clips
@@ -1134,7 +1141,7 @@ namespace spotify
             {
                 var ourHwnd = TryGetWebViewHwnd();
                 Console.WriteLine($"[Spotify] TryGetWebViewHwnd returned {ourHwnd}");
-                Console.WriteLine($"[Spotify] visualRect (pre-scale)={visualRect} renderScaling={scaling} -> target x={x},y={y},w={w},h={h}");
+                Console.WriteLine($"[Spotify] visualRect (shrunk)={x},{y},{w},{h} renderScaling={scaling}");
 
                 if (ourHwnd != IntPtr.Zero)
                 {
@@ -1207,6 +1214,7 @@ namespace spotify
             Console.WriteLine($"[Spotify] computed visualScale={visualScale}");
 
             ForceWebView2RepositioningWithSize(0, wExt, h);
+
         }
 
         // Same as ForceWebView2Repositioning but with explicit width/height so we can
