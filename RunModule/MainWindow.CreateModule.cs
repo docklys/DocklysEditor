@@ -213,21 +213,36 @@ public partial class MainWindow
         if (Directory.Exists(targetDir))
             throw new IOException($"Target folder already exists: {targetDir}");
 
-        Directory.CreateDirectory(targetDir);
-        CopyDirectoryFiltered(sourceDir, targetDir, templateName, newName);
+        // The template's *real* identifier is its .csproj base name, which is
+        // what the namespace/class/x:Class/Id and the .axaml/.cs file names are
+        // built from. That casing can differ from the folder name (e.g. the
+        // "Spotify" folder ships a "spotify" project), so we replace BOTH the
+        // folder name and the project id. Without the project id, the lowercase
+        // internals and file names would be left pointing at the template.
+        var identifiers = CollectTemplateIdentifiers(sourceDir, templateName);
 
-        // Rename <TemplateName>.* files to <NewName>.* — the text inside was
-        // already rewritten by CopyDirectoryFiltered.
+        Directory.CreateDirectory(targetDir);
+        CopyDirectoryFiltered(sourceDir, targetDir, identifiers, templateName, newName);
+
+        // Rename <identifier>.* files to <NewName>.* — the text inside was
+        // already rewritten by CopyDirectoryFiltered. Match case-insensitively
+        // so e.g. "spotify.csproj" is caught even when the template folder is
+        // "Spotify"; strip whichever identifier prefix is longest.
         foreach (var pattern in new[] { "*.csproj", "*.axaml", "*.axaml.cs", "*.cs" })
         {
             foreach (var file in Directory.GetFiles(targetDir, pattern, SearchOption.AllDirectories))
             {
                 var baseName = Path.GetFileName(file);
-                if (baseName.StartsWith(templateName, StringComparison.Ordinal))
+                var prefix = identifiers
+                    .Where(id => baseName.StartsWith(id, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(id => id.Length)
+                    .FirstOrDefault();
+                if (prefix != null)
                 {
-                    var newBase = newName + baseName.Substring(templateName.Length);
+                    var newBase = newName + baseName.Substring(prefix.Length);
                     var newPath = Path.Combine(Path.GetDirectoryName(file)!, newBase);
-                    File.Move(file, newPath);
+                    if (!string.Equals(file, newPath, StringComparison.Ordinal))
+                        File.Move(file, newPath);
                 }
             }
         }
@@ -255,8 +270,45 @@ public partial class MainWindow
         }
     }
 
-    private static void CopyDirectoryFiltered(string src, string dst, string templateName, string newName)
+    // Build the set of identifier strings that stand in for the template's
+    // name inside its files: the folder name, the .csproj base name (the real
+    // namespace/class/Id casing — often differs from the folder), and the
+    // DefaultModule scaffold alias. Returned ordered longest-first so a token
+    // that is a prefix of another wins when matching file names.
+    private static IReadOnlyList<string> CollectTemplateIdentifiers(string sourceDir, string templateName)
     {
+        var tokens = new List<string> { templateName };
+
+        var projFile = Directory.EnumerateFiles(sourceDir, "*.csproj").FirstOrDefault();
+        if (projFile != null)
+        {
+            var projId = Path.GetFileNameWithoutExtension(projFile);
+            if (!tokens.Contains(projId, StringComparer.Ordinal))
+                tokens.Add(projId);
+        }
+
+        // DefaultModule's blank scaffold uses "BlackModule" as its class/id alias.
+        if (string.Equals(templateName, "DefaultModule", StringComparison.Ordinal))
+            tokens.Add("BlackModule");
+
+        return tokens.OrderByDescending(t => t.Length).ToList();
+    }
+
+    private static void CopyDirectoryFiltered(
+        string src,
+        string dst,
+        IReadOnlyList<string> identifiers,
+        string templateName,
+        string newName)
+    {
+        // One regex over all identifiers so the replacement is a single
+        // left-to-right pass: text we just inserted (which may itself contain
+        // the template name, e.g. a new module called "MySpotify") is never
+        // re-scanned and double-replaced. Identifiers are valid C# names, but
+        // escape anyway for safety; longest-first so the broadest token wins.
+        var pattern = string.Join("|", identifiers.Select(Regex.Escape));
+        var identifierRegex = new Regex(pattern);
+
         foreach (var entry in Directory.EnumerateFileSystemEntries(src))
         {
             var name = Path.GetFileName(entry);
@@ -267,7 +319,7 @@ public partial class MainWindow
             if (Directory.Exists(entry))
             {
                 Directory.CreateDirectory(targetPath);
-                CopyDirectoryFiltered(entry, targetPath, templateName, newName);
+                CopyDirectoryFiltered(entry, targetPath, identifiers, templateName, newName);
             }
             else
             {
@@ -278,15 +330,13 @@ public partial class MainWindow
                 else
                 {
                     var text = File.ReadAllText(entry);
-                    // Replace the template's identifier (namespace, class, AssemblyName,
-                    // display name string) with the new module's name.
-                    text = text.Replace(templateName, newName);
-                    // DefaultModule-specific aliases used in its scaffold.
-                    if (templateName == "DefaultModule")
-                    {
-                        text = text.Replace("BlackModule", newName);
+                    // Replace every identifier casing (namespace, class, AssemblyName,
+                    // x:Class, x:Name, Id string, …) with the new module's name.
+                    text = identifierRegex.Replace(text, newName);
+                    // DefaultModule's display-name string carries a space, so it
+                    // isn't an identifier token — handle it explicitly.
+                    if (string.Equals(templateName, "DefaultModule", StringComparison.Ordinal))
                         text = text.Replace("\"Default Module\"", "\"" + newName + "\"");
-                    }
                     File.WriteAllText(targetPath, text);
                 }
             }

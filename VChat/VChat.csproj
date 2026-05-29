@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+    <ItemGroup>
+      <Compile Update="VChat.axaml.cs">
+        <DependentUpon>VChat.axaml</DependentUpon>
+      </Compile>
+    </ItemGroup>
+    <ItemGroup>
+      <PackageReference Include="Avalonia" Version="11.3.1" />
+      <PackageReference Include="Avalonia.Desktop" Version="11.3.1" />
+      <!-- No WebView.Avalonia reference here — WebView is discovered at runtime
+           via reflection so this module loads cleanly in RunModule too. -->
+    </ItemGroup>
+    <ItemGroup>
+      <ProjectReference Include="..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj" />
+    </ItemGroup>
+    <PropertyGroup>
+      <!-- Determine output directory for built module DLLs. Use SolutionDir when available, otherwise fall back to repository root parent. -->
+      <OutputModuleDir Condition=" '$(SolutionDir)' == '' ">$(MSBuildProjectDirectory)\..\OutputModuleDLL</OutputModuleDir>
+      <OutputModuleDir Condition=" '$(SolutionDir)' != '' ">$(SolutionDir)OutputModuleDLL</OutputModuleDir>
+    </PropertyGroup>
+    <Target Name="CopyDllAfterBuild" AfterTargets="Build">
+      <MakeDir Directories="$(OutputModuleDir)" Condition="!Exists('$(OutputModuleDir)')" />
+      <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(OutputModuleDir)" />
+    </Target>
+</Project>
