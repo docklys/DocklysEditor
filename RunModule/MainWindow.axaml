@@ -402,7 +402,7 @@
                                 Click="ResetTheme_Click"/>
                         <Button Content="Close" 
                                 FontSize="10"
-                                Background="{DynamicResource ColorAccent}"
+                                Background="{DynamicResource ColorModuleAccentColor}"
                                 Foreground="{DynamicResource ColorModuleFont}"
                                 Click="CloseTheme_Click"/>
                     </StackPanel>
@@ -432,7 +432,7 @@
                             ToolTip.Tip="Re-instantiate the active module"/>
                     <Button Name="ThemeButton"
                             Content="🎨 Theme"
-                            Background="{DynamicResource ColorAccent}"
+                            Background="{DynamicResource ColorModuleAccentColor}"
                             Foreground="{DynamicResource ColorModuleFont}"
                             FontSize="11"
                             Padding="10,2"

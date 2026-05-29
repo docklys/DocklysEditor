@@ -161,7 +161,7 @@ namespace VolumeMixer
                 var emptyText = new TextBlock
                 {
                     Text = "No active audio sessions",
-                    Foreground = GetAppBrush("ColorFont", Color.FromArgb(255, 142, 142, 147)),
+                    Foreground = GetAppBrush("ColorModuleFont", Color.FromArgb(255, 142, 142, 147)),
                     FontSize = 9,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
@@ -218,7 +218,7 @@ namespace VolumeMixer
                     var textBlock = new TextBlock
                     {
                         Text = name,
-                        Foreground = GetAppBrush("ColorFont", Color.FromArgb(255, 255, 255, 255)),
+                        Foreground = GetAppBrush("ColorModuleFont", Color.FromArgb(255, 255, 255, 255)),
                         FontSize = 9,
                         VerticalAlignment = VerticalAlignment.Center,
                         TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis
@@ -226,7 +226,7 @@ namespace VolumeMixer
                     contentPanel.Children.Add(textBlock);
 
                     sessionButton.Content = contentPanel;
-                    sessionButton.Foreground = GetAppBrush("ColorFont", Color.FromArgb(255, 255, 255, 255));
+                    sessionButton.Foreground = GetAppBrush("ColorModuleFont", Color.FromArgb(255, 255, 255, 255));
 
                     sessionButton.Click += (s, args) =>
                     {

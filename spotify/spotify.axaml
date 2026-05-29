@@ -23,7 +23,7 @@
                     Margin="0,0,0,20"
                     Width="5" Height="5"
                     CornerRadius="2.5"
-                    Background="{DynamicResource ColorAccent}"
+                    Background="{DynamicResource ColorModuleAccentColor}"
                     Padding="0"
                     BorderThickness="0"
                     ZIndex="1000" />
@@ -46,7 +46,7 @@
                                    Opacity="0.6"
                                    HorizontalAlignment="Center" />
 
-                        <Border Background="{DynamicResource ColorAccent}" 
+                        <Border Background="{DynamicResource ColorModuleAccentColor}" 
                                 CornerRadius="6" 
                                 Padding="12,8"
                                 BorderBrush="{DynamicResource ColorModuleFont}"
@@ -115,7 +115,7 @@
                         <Button x:Name="CloseSettingsButton"
                                 Content="DONE"
                                 HorizontalAlignment="Center"
-                                Background="{DynamicResource ColorAccent}"
+                                Background="{DynamicResource ColorModuleAccentColor}"
                                 Foreground="{DynamicResource ColorModuleFont}"
                                 Padding="24,6"
                                 FontSize="11"

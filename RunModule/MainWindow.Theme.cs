@@ -16,7 +16,7 @@ public partial class MainWindow
     private static readonly string[] EditableColorResources = {
         "ColorModuleColor",
         "ColorModuleFont",
-        "ColorAccent"
+        "ColorModuleAccentColor"
     };
 
     private void InitializeTheme()
@@ -110,7 +110,7 @@ public partial class MainWindow
             CornerRadius = new CornerRadius(4),
             Child = grid
         };
-        border.Bind(Border.BackgroundProperty, Application.Current.GetResourceObservable("ColorAccent"));
+        border.Bind(Border.BackgroundProperty, Application.Current.GetResourceObservable("ColorModuleAccentColor"));
 
         return border;
     }
