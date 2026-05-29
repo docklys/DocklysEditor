@@ -466,6 +466,14 @@ namespace VChat
             
             _wasLButtonDown = isLButtonDown;
         }
+                            walk = GetParent(walk);
+                        }
+                    }
+                }
+            }
+            
+            _wasLButtonDown = isLButtonDown;
+        }
 
         private void TryCreateWebView()
         {
