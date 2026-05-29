@@ -16,7 +16,7 @@ public partial class MainWindow
     private static readonly string[] EditableColorResources = {
         "ColorModuleColor",
         "ColorModuleFont",
-        "ColorModuleAccentColor"
+        "ColorAccent"
     };
 
     private void InitializeTheme()
@@ -75,9 +75,9 @@ public partial class MainWindow
             Text = resName.Replace("Color", ""),
             VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
             FontSize = 11,
-            FontWeight = FontWeight.Medium
+            FontWeight = FontWeight.Medium,
+            Foreground = new SolidColorBrush(Colors.White),
         };
-        nameLabel.Bind(TextBlock.ForegroundProperty, Application.Current!.GetResourceObservable("ColorModuleFont"));
 
         var colorPicker = new ColorPicker
         {
@@ -108,9 +108,9 @@ public partial class MainWindow
             Padding = new Thickness(12, 8),
             Margin = new Thickness(0, 0, 0, 4),
             CornerRadius = new CornerRadius(4),
+            Background = new SolidColorBrush(Color.Parse("#2A2A2A")),
             Child = grid
         };
-        border.Bind(Border.BackgroundProperty, Application.Current.GetResourceObservable("ColorModuleAccentColor"));
 
         return border;
     }

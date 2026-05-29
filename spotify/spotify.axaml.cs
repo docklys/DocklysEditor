@@ -24,7 +24,7 @@ namespace spotify
         public string[] Tags => new[] { "spotify", "music", "streaming" };
 
         public int PreferredTileWidth => 2;
-        public int PreferredTileHeight => 2;
+        public int PreferredTileHeight => 3;
 
         public string MinAppVersion => "1.0.0";
         public string MaxAppVersion => "2.0.0";
@@ -100,56 +100,68 @@ namespace spotify
                         }
                         else
                         {
-                            Console.WriteLine("[Spotify] SetTileSize: webView exists, forcing immediate relayout and sync");
-                            // Immediate aggressive relayout + multiple follow-ups so
-                            // platform races are less likely to leave the HWND stale.
-                            ForceWebViewRelayout();
-                            SyncWebViewHwndToVisualBounds();
-                            ApplyWebViewRoundedCorners();
-                            StartContinuousSync();
-
-                            // Two follow-up nudges: one in Background and one when idle.
-                            Dispatcher.UIThread.Post(() => { try { SyncWebViewHwndToVisualBounds(); ApplyWebViewRoundedCorners(); } catch { } }, DispatcherPriority.Background);
-                            Dispatcher.UIThread.Post(() => { try { SyncWebViewHwndToVisualBounds(); ApplyWebViewRoundedCorners(); } catch { } }, DispatcherPriority.ContextIdle);
-
-                            // Start a short polling timer that ensures we retry until the
-                            // WebView's measured bounds reflect the new tile size. This
-                            // catches cases where layout and platform HWND creation are
-                            // delayed and our one-shot nudges lost the race.
-                            var poll = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
-                            int pollAttempts = 0;
-                            double lastW = _webView.Bounds.Width;
-                            double lastH = _webView.Bounds.Height;
-                            poll.Tick += (_, _) =>
+                            if (_webView.IsVisible)
                             {
-                                pollAttempts++;
-                                try
-                                {
-                                    // Force a relayout and sync each tick.
-                                    ForceWebViewRelayout();
-                                    SyncWebViewHwndToVisualBounds();
-                                    ApplyWebViewRoundedCorners();
+                                Console.WriteLine("[Spotify] SetTileSize: webView exists, forcing immediate relayout and sync");
+                                // Immediate aggressive relayout + multiple follow-ups so
+                                // platform races are less likely to leave the HWND stale.
+                                ForceWebViewRelayout();
+                                SyncWebViewHwndToVisualBounds();
+                                ApplyWebViewRoundedCorners();
+                                StartContinuousSync();
 
-                                    // If the WebView reports changed bounds or we discovered an HWND,
-                                    // stop polling early.
-                                    var curW = _webView?.Bounds.Width ?? 0.0;
-                                    var curH = _webView?.Bounds.Height ?? 0.0;
-                                    var hw = TryGetWebViewHwnd();
-                                    if ((Math.Abs(curW - lastW) > 0.5 || Math.Abs(curH - lastH) > 0.5) || hw != IntPtr.Zero)
+                                // Two follow-up nudges: one in Background and one when idle.
+                                Dispatcher.UIThread.Post(() => { if (_webView.IsVisible) { try { SyncWebViewHwndToVisualBounds(); ApplyWebViewRoundedCorners(); } catch { } } }, DispatcherPriority.Background);
+                                Dispatcher.UIThread.Post(() => { if (_webView.IsVisible) { try { SyncWebViewHwndToVisualBounds(); ApplyWebViewRoundedCorners(); } catch { } } }, DispatcherPriority.ContextIdle);
+
+                                // Start a short polling timer that ensures we retry until the
+                                // WebView's measured bounds reflect the new tile size. This
+                                // catches cases where layout and platform HWND creation are
+                                // delayed and our one-shot nudges lost the race.
+                                var poll = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+                                int pollAttempts = 0;
+                                double lastW = _webView.Bounds.Width;
+                                double lastH = _webView.Bounds.Height;
+                                poll.Tick += (_, _) =>
+                                {
+                                    pollAttempts++;
+                                    if (!_webView.IsVisible)
                                     {
-                                        Console.WriteLine($"[Spotify] Poll success: bounds={curW}x{curH}, hwnd={hw}");
                                         poll.Stop();
                                         return;
                                     }
-                                    if (pollAttempts > 20) // ~2s
+                                    try
                                     {
-                                        Console.WriteLine("[Spotify] Poll timeout: giving up after attempts");
-                                        poll.Stop();
+                                        // Force a relayout and sync each tick.
+                                        ForceWebViewRelayout();
+                                        SyncWebViewHwndToVisualBounds();
+                                        ApplyWebViewRoundedCorners();
+
+                                        // If the WebView reports changed bounds or we discovered an HWND,
+                                        // stop polling early.
+                                        var curW = _webView?.Bounds.Width ?? 0.0;
+                                        var curH = _webView?.Bounds.Height ?? 0.0;
+                                        var hw = TryGetWebViewHwnd();
+                                        if ((Math.Abs(curW - lastW) > 0.5 || Math.Abs(curH - lastH) > 0.5) || hw != IntPtr.Zero)
+                                        {
+                                            Console.WriteLine($"[Spotify] Poll success: bounds={curW}x{curH}, hwnd={hw}");
+                                            poll.Stop();
+                                            return;
+                                        }
+                                        if (pollAttempts > 20) // ~2s
+                                        {
+                                            Console.WriteLine("[Spotify] Poll timeout: giving up after attempts");
+                                            poll.Stop();
+                                        }
                                     }
-                                }
-                                catch { if (pollAttempts > 20) poll.Stop(); }
-                            };
-                            poll.Start();
+                                    catch { if (pollAttempts > 20) poll.Stop(); }
+                                };
+                                poll.Start();
+                            }
+                            else
+                            {
+                                Console.WriteLine("[Spotify] SetTileSize: webView is hidden, skipping relayout sync to prevent engine crash.");
+                            }
 
                             // Immediate brute-force fallback: enumerate top-level child HWNDs
                             // and set their bounds to our target rect. This will forcibly
@@ -1065,18 +1077,28 @@ namespace spotify
             var topLevel = TopLevel.GetTopLevel(_webView);
             if (topLevel == null) return;
 
-            Visual? v = _webView;
-            while (v != null && v != topLevel)
+            try
             {
-                if (v is Layoutable l)
+                Visual? v = _webView;
+                while (v != null && v != topLevel)
                 {
-                    l.InvalidateMeasure();
-                    l.InvalidateArrange();
+                    if (v is Layoutable l)
+                    {
+                        l.InvalidateMeasure();
+                        l.InvalidateArrange();
+                    }
+                    v = v.GetVisualParent();
                 }
-                v = v.GetVisualParent();
+                (topLevel as Layoutable)?.InvalidateArrange();
+                if (_webView.IsVisible)
+                {
+                    topLevel.UpdateLayout();
+                }
             }
-            (topLevel as Layoutable)?.InvalidateArrange();
-            topLevel.UpdateLayout();
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Spotify] ForceWebViewRelayout handled exception: {ex.Message}");
+            }
 
             // Belt-and-suspenders: also drive the HWND + WebView2 controller bounds
             // directly. Defer one frame so it runs after the just-triggered arrange pass.

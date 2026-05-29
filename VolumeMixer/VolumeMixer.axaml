@@ -32,7 +32,7 @@
                         BorderBrush="{TemplateBinding BorderBrush}"
                         BorderThickness="{TemplateBinding BorderThickness}"
                         CornerRadius="2">
-                        <Border CornerRadius="1" Margin="1,0" Background="{DynamicResource ColorModuleAccentColor}"
+                        <Border CornerRadius="1" Margin="1,0" Background="{DynamicResource ColorAccent}"
                                 VerticalAlignment="Center" Height="2">
                         </Border>
                     </Border>
@@ -64,7 +64,7 @@
         <!-- Custom Slider Theme -->
         <ControlTheme x:Key="CustomSliderTheme" TargetType="Slider">
             <Setter Property="Background" Value="#101010" />
-            <Setter Property="Foreground" Value="{DynamicResource ColorModuleAccentColor}" />
+            <Setter Property="Foreground" Value="{DynamicResource ColorAccent}" />
             <Style Selector="^:vertical">
                 <Setter Property="Template">
                     <ControlTemplate>

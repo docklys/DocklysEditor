@@ -6,7 +6,7 @@
              <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
              <Application.Resources>
                  <SolidColorBrush x:Key="ColorModuleFont" Color="White"/>
-                 <Color x:Key="ColorModuleAccentColor">White</Color>
+                 <SolidColorBrush x:Key="ColorAccent" Color="#202723"/>
                  <SolidColorBrush x:Key="ColorModuleColor" Color="#363737"/>
              </Application.Resources>
     <Application.Styles>
