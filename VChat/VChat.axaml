@@ -67,6 +67,8 @@
 
     <Border Background="{DynamicResource ColorModuleColor}"
             Padding="0"
+            Width="230"
+            Height="350"
             CornerRadius="10"
             ClipToBounds="True">
         <Grid>

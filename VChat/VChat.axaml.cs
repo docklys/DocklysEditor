@@ -265,14 +265,10 @@ namespace VChat
             SettingsButton.Click += (_, _) => ToggleSettings(true);
             CloseSettingsButton.Click += (_, _) => ToggleSettings(false);
 
-            // When the user clicks anywhere in the tile, steal Win32 keyboard focus
-            // to the WebView HWND. AvaloniaWebView's NativeControlHost sometimes
-            // keeps focus in the Avalonia window, preventing typing and Ctrl+scroll.
-            this.PointerPressed += (_, _) =>
-            {
-                if (_webViewHwnd != IntPtr.Zero)
-                    SetFocus(_webViewHwnd);
-            };
+            // NOTE: No PointerPressed SetFocus here. Spotify (the working reference,
+            // same native-WebView2 setup) has zero focus-stealing code and clicks +
+            // typing work. Forcing Win32 focus mid-interaction was breaking clicks,
+            // so we let WebView2 manage its own focus like Spotify does.
 
             // Ctrl+scroll: manually drive WebView2 ZoomFactor so it works even when
             // the parent Avalonia window captures the wheel event before the HWND sees it.
@@ -414,7 +410,8 @@ namespace VChat
             {
                 SyncWebViewHwndToVisualBounds();
                 ApplyWebViewRoundedCorners();
-                FocusWebViewIfClicked();
+                // FocusWebViewIfClicked() intentionally NOT called — matches Spotify,
+                // which has no focus-stealing and works. Re-enable only if typing fails.
             };
             _continuousSyncTimer.Start();
         }
@@ -427,8 +424,14 @@ namespace VChat
         // delivered to the *focused* window — which stays the Avalonia top-level, never
         // the WebView. The native HWND eats the click before Avalonia sees it, so we
         // can't catch it via Avalonia's PointerPressed. Instead we poll (from the 33 Hz
-        // sync): while the left button is held and the cursor is over our WebView HWND,
-        // force Win32 focus onto it so keystrokes and the wheel route to the page.
+        // sync): when the left button is RELEASED over our WebView HWND, force Win32 focus
+        // onto it so keystrokes and the wheel route to the page.
+        //
+        // We act on the button-UP transition, not button-down: Chromium handles the click
+        // (focusing the DOM field, placing the caret) on the down/up it receives directly.
+        // Stealing Win32 focus mid-click (on button-down) derails that handling, which is
+        // why clicks/text-fields stop working. Doing it on release leaves the click intact
+        // and only hands keyboard focus over afterwards.
         private bool _wasLButtonDown;
 
         private void FocusWebViewIfClicked()
@@ -438,12 +441,12 @@ namespace VChat
             if (SettingsOverlay?.IsVisible == true) return;
 
             var hwnd = _webViewHwnd;
-            if (hwnd == IntPtr.Zero) return;
+            if (hwnd == IntPtr.Zero) { _wasLButtonDown = false; return; }
 
             bool isLButtonDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
-            
-            // Only act on the transition from up to down (a new click).
-            if (isLButtonDown && !_wasLButtonDown)
+
+            // Act on the transition from down to up (click finished).
+            if (!isLButtonDown && _wasLButtonDown)
             {
                 if (GetCursorPos(out var pt))
                 {
@@ -455,7 +458,9 @@ namespace VChat
                         {
                             if (walk == hwnd)
                             {
-                                SetFocus(hwnd);
+                                // Only set focus if it isn't already ours, to avoid
+                                // redundant focus churn while typing.
+                                if (GetFocus() != hwnd) SetFocus(hwnd);
                                 break;
                             }
                             walk = GetParent(walk);
@@ -463,15 +468,7 @@ namespace VChat
                     }
                 }
             }
-            
-            _wasLButtonDown = isLButtonDown;
-        }
-                            walk = GetParent(walk);
-                        }
-                    }
-                }
-            }
-            
+
             _wasLButtonDown = isLButtonDown;
         }
 
@@ -706,6 +703,8 @@ namespace VChat
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
         [DllImport("user32.dll")]
         private static extern IntPtr SetFocus(IntPtr hWnd);
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetFocus();
 
         // Subscriptions to every ancestor's RenderTransformProperty (catches transform
         // replacement, e.g. the editor's StackPanel.RenderTransform = new TranslateTransform()
@@ -867,10 +866,27 @@ namespace VChat
                 {
                     try
                     {
+                        // IMPORTANT — VChat differs from Spotify here. Spotify serves a
+                        // different page per user-agent, so a mobile UA forces its mobile
+                        // layout and ZoomFactor is purely cosmetic. VChat's site serves
+                        // IDENTICAL html regardless of UA and decides mobile-vs-desktop
+                        // CLIENT-SIDE from the CSS viewport width. The WebView2 CSS viewport
+                        // width ≈ controllerWidthPx / ZoomFactor, so zooming OUT (0.5) widens
+                        // the viewport (~460px) and trips the desktop breakpoint. To keep the
+                        // mobile layout the viewport must stay narrow → leave zoom at 1.0.
+                        var zoomProp = controllerType.GetProperty("ZoomFactor");
+                        if (zoomProp?.PropertyType == typeof(double))
+                            try { zoomProp.SetValue(controller, 1.0); } catch { }
+
                         var settingsProp = coreType.GetProperty("Settings");
                         var settings = settingsProp?.GetValue(core);
                         if (settings != null)
                         {
+                            // Mobile UA is a best-effort hint only (this site ignores it for
+                            // layout, but some PWAs key feature detection off it).
+                            var uaProp = settings.GetType().GetProperty("UserAgent");
+                            try { uaProp?.SetValue(settings, MobileUserAgent); } catch { }
+
                             // Ensure Ctrl+scroll zoom is not suppressed by the host.
                             var zoomEnabledProp = settings.GetType().GetProperty("IsZoomControlEnabled");
                             if (zoomEnabledProp?.PropertyType == typeof(bool))
@@ -895,6 +911,13 @@ namespace VChat
                         var addScript = coreType.GetMethod("AddScriptToExecuteOnDocumentCreatedAsync",
                             new[] { typeof(string) });
                         addScript?.Invoke(core, new object[] { persistentScript });
+
+                        // Authoritative navigation. The Url-property set in the Loaded
+                        // handler can be dropped when it fires before CoreWebView2 is
+                        // initialized, leaving a blank/black surface — so navigate here
+                        // once the core is actually ready (this runs on the retry loop).
+                        var navigateMethod = coreType.GetMethod("Navigate", new[] { typeof(string) });
+                        navigateMethod?.Invoke(core, new object[] { VChatUrl });
                     }
                     catch { }
                 }
