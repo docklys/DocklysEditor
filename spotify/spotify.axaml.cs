@@ -694,10 +694,11 @@ namespace spotify
         // Cache last applied visual zoom to avoid redundant sets and reduce races.
         // Start as NaN so the first set always applies.
         private double _lastAppliedVisualZoom = double.NaN;
-        // Visible (clipped) HWND width in physical pixels. The HWND is made wider by
-        // the Chromium scrollbar width so the scrollbar renders off-screen; the
-        // SetWindowRgn clip is set to this narrower value to hide those extra pixels.
+        // Visible (clipped) HWND width/height in physical pixels. The HWND is made wider/taller
+        // by the Chromium scrollbar width so the scrollbars render off-screen; the
+        // SetWindowRgn clip is set to these narrower values to hide those extra pixels.
         private int _visibleHwndW;
+        private int _visibleHwndH;
         // Mobile user agent so Spotify serves the compact mobile layout.
         private const string MobileUserAgent =
             "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36";
@@ -777,15 +778,19 @@ namespace spotify
                             // Uses a MutationObserver so Spotify can't add the scrollbar back after our CSS runs.
                             const string persistentScript =
                                 "(function(){" +
-                                "function applyNoScroll(){" +
-                                "var s=document.getElementById('_dockly_noscroll');" +
+                                "const css='html, body { overflow: hidden !important; } " +
+                                "* { scrollbar-width: none !important; -ms-overflow-style: none !important; } " +
+                                "*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }';" +
+                                "function apply(){" +
+                                "let s=document.getElementById('_dockly_noscroll');" +
                                 "if(!s){s=document.createElement('style');s.id='_dockly_noscroll';" +
                                 "(document.head||document.documentElement).appendChild(s);}" +
-                                "s.textContent='::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}" +
-                                "*{scrollbar-width:none!important;-ms-overflow-style:none!important}';" +
+                                "if(s.textContent!==css)s.textContent=css;" +
+                                "if(document.body)document.body.style.setProperty('overflow','hidden','important');" +
+                                "document.documentElement.style.setProperty('overflow','hidden','important');" +
                                 "}" +
-                                "applyNoScroll();" +
-                                "new MutationObserver(applyNoScroll).observe(document.documentElement,{childList:true,subtree:true});" +
+                                "apply();" +
+                                "new MutationObserver(apply).observe(document.documentElement,{childList:true,subtree:true,attributes:true});" +
                                 "})();";
                             var addScript = coreType.GetMethod("AddScriptToExecuteOnDocumentCreatedAsync",
                                 new[] { typeof(string) });
@@ -805,17 +810,21 @@ namespace spotify
                 {
                     const string liveScript =
                         "(function(){" +
-                        "function applyNoScroll(){" +
-                        "var s=document.getElementById('_dockly_noscroll');" +
+                        "const css='html, body { overflow: hidden !important; } " +
+                        "* { scrollbar-width: none !important; -ms-overflow-style: none !important; } " +
+                        "*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }';" +
+                        "function apply(){" +
+                        "let s=document.getElementById('_dockly_noscroll');" +
                         "if(!s){s=document.createElement('style');s.id='_dockly_noscroll';" +
                         "(document.head||document.documentElement).appendChild(s);}" +
-                        "s.textContent='::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}" +
-                        "*{scrollbar-width:none!important;-ms-overflow-style:none!important}';" +
+                        "if(s.textContent!==css)s.textContent=css;" +
+                        "if(document.body)document.body.style.setProperty('overflow','hidden','important');" +
+                        "document.documentElement.style.setProperty('overflow','hidden','important');" +
                         "}" +
-                        "applyNoScroll();" +
+                        "apply();" +
                         "if(!window._docklyObserver){" +
-                        "window._docklyObserver=new MutationObserver(applyNoScroll);" +
-                        "window._docklyObserver.observe(document.documentElement,{childList:true,subtree:true});}" +
+                        "window._docklyObserver=new MutationObserver(apply);" +
+                        "window._docklyObserver.observe(document.documentElement,{childList:true,subtree:true,attributes:true});}" +
                         "})();";
                     var execScript = coreType.GetMethod("ExecuteScriptAsync", new[] { typeof(string) });
                     execScript?.Invoke(core, new object[] { liveScript });
@@ -1030,8 +1039,8 @@ namespace spotify
                     }
                     catch { }
 
-                    ApplyRoundedRgn(outerHwnd, diameter, _visibleHwndW);
-                    if (outerHwnd != innerHwnd) ApplyRoundedRgn(innerHwnd, diameter, _visibleHwndW);
+                    ApplyRoundedRgn(outerHwnd, diameter, _visibleHwndW, _visibleHwndH);
+                    if (outerHwnd != innerHwnd) ApplyRoundedRgn(innerHwnd, diameter, _visibleHwndW, _visibleHwndH);
                 }
                 else
                 {
@@ -1039,7 +1048,7 @@ namespace spotify
                     IntPtr child = FindWindowEx(parentHwnd, IntPtr.Zero, null, null);
                     while (child != IntPtr.Zero)
                     {
-                        ApplyRoundedRgn(child, diameter, _visibleHwndW);
+                        ApplyRoundedRgn(child, diameter, _visibleHwndW, _visibleHwndH);
                         child = FindWindowEx(parentHwnd, child, null, null);
                     }
                 }
@@ -1050,12 +1059,12 @@ namespace spotify
             }
         }
 
-        private static void ApplyRoundedRgn(IntPtr hwnd, int diameter, int visibleWidth = 0)
+        private static void ApplyRoundedRgn(IntPtr hwnd, int diameter, int visibleWidth = 0, int visibleHeight = 0)
         {
             if (!GetClientRect(hwnd, out RECT r)) return;
-            // Use visibleWidth when supplied so the clip excludes the off-screen scrollbar pixels.
+            // Use visibleWidth/Height when supplied so the clip excludes the off-screen scrollbar pixels.
             int w = (visibleWidth > 0 && visibleWidth < r.Right - r.Left) ? visibleWidth : (r.Right - r.Left);
-            int h = r.Bottom - r.Top;
+            int h = (visibleHeight > 0 && visibleHeight < r.Bottom - r.Top) ? visibleHeight : (r.Bottom - r.Top);
             if (w <= 50 || h <= 50) return;
             IntPtr rgn = CreateRoundRectRgn(0, 0, w + 1, h + 1, diameter, diameter);
             SetWindowRgn(hwnd, rgn, true);
@@ -1151,12 +1160,14 @@ namespace spotify
             int w = Math.Max(1, (int)(visualRect.Width * scaling - pad * 2));
             int h = Math.Max(1, (int)(visualRect.Height * scaling - pad * 2));
 
-            // Extend the HWND by the Chromium scrollbar width so the scrollbar renders
-            // off the right edge. SetWindowRgn (via ApplyWebViewRoundedCorners) clips
-            // the visible region back to w, making the scrollbar invisible.
+            // Extend the HWND by the Chromium scrollbar width so the scrollbars render
+            // off the right/bottom edge. SetWindowRgn (via ApplyWebViewRoundedCorners) clips
+            // the visible region back to w,making the scrollbar invisible.
             int scrollbarExtra = Math.Max(0, (int)(15 * scaling));
             _visibleHwndW = w;
+            _visibleHwndH = h;
             int wExt = w + scrollbarExtra;
+            int hExt = h + scrollbarExtra;
 
             int targetX = x;
 
@@ -1182,15 +1193,15 @@ namespace spotify
                     catch { /* ignore */ }
 
                     // Position the outer window (the one whose origin is in TopLevel coords).
-                    // Use wExt so the scrollbar renders off the right edge (clipped by SetWindowRgn).
-                    SetWindowPos(outerHwnd, IntPtr.Zero, targetX, y, wExt, h, SWP_NOZORDER | SWP_NOACTIVATE);
+                    // Use wExt/hExt so the scrollbars render off the edge (clipped by SetWindowRgn).
+                    SetWindowPos(outerHwnd, IntPtr.Zero, targetX, y, wExt, hExt, SWP_NOZORDER | SWP_NOACTIVATE);
 
                     // If we moved a wrapper (outer != inner), ensure the inner WebView HWND
-                    // fills the moved container so the DComp surface is at 0,0..wExt,h.
+                    // fills the moved container so the DComp surface is at 0,0..wExt,hExt.
                     if (outerHwnd != ourHwnd)
                     {
-                        SetWindowPos(ourHwnd, IntPtr.Zero, 0, 0, wExt, h, SWP_NOZORDER | SWP_NOACTIVATE);
-                        Console.WriteLine($"[Spotify] Positioned outerHwnd={outerHwnd} innerHwnd={ourHwnd} -> x={targetX},y={y},w={wExt},h={h}");
+                        SetWindowPos(ourHwnd, IntPtr.Zero, 0, 0, wExt, hExt, SWP_NOZORDER | SWP_NOACTIVATE);
+                        Console.WriteLine($"[Spotify] Positioned outerHwnd={outerHwnd} innerHwnd={ourHwnd} -> x={targetX},y={y},w={wExt},h={hExt}");
                     }
                 }
                 else
@@ -1204,7 +1215,7 @@ namespace spotify
                             int ch = r.Bottom - r.Top;
                             Console.WriteLine($"[Spotify] Enumerating child HWND={child} client={cw}x{ch}");
                             if (cw > 50 && ch > 50)
-                                SetWindowPos(child, IntPtr.Zero, targetX, y, wExt, h,
+                                SetWindowPos(child, IntPtr.Zero, targetX, y, wExt, hExt,
                                     SWP_NOZORDER | SWP_NOACTIVATE);
                         }
                         child = FindWindowEx(parentHwnd, child, null, null);
@@ -1236,7 +1247,7 @@ namespace spotify
 
             Console.WriteLine($"[Spotify] computed visualScale={visualScale}");
 
-            ForceWebView2RepositioningWithSize(0, wExt, h);
+            ForceWebView2RepositioningWithSize(0, wExt, hExt);
 
         }
 
