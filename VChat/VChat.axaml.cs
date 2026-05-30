@@ -1388,10 +1388,13 @@ namespace VChat
             int w = Math.Max(1, (int)(visualRect.Width * scaling - pad * 2));
             int h = Math.Max(1, (int)(visualRect.Height * scaling - pad * 2));
 
-            // Extend the HWND by the Chromium scrollbar width so the scrollbar renders
-            // off the right/bottom edge. SetWindowRgn (via ApplyWebViewRoundedCorners) clips
-            // the visible region back to w, making the scrollbar invisible.
-            int scrollbarExtra = Math.Max(0, (int)(15 * scaling));
+            // NOTE: we no longer extend the HWND past the visible area. The old trick made
+            // the HWND 15px wider/taller so the native scrollbar would render in the strip
+            // that SetWindowRgn then clipped away. But the injected CSS already hides the
+            // scrollbars, so there are none to push off-screen — the page just lays out its
+            // content across the extra 15px, which the clip then ate (content cut off on the
+            // right/bottom). Render into exactly the visible size so no real content is lost.
+            int scrollbarExtra = 0;
             _visibleHwndW = w;
             _visibleHwndH = h;
             int wExt = w + scrollbarExtra;
