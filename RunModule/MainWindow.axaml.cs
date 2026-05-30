@@ -89,7 +89,7 @@ public partial class MainWindow : Window
         if (requiredHeight > this.Height) this.Height = requiredHeight;
     }
 
-    private void CaptureToWebP_Click(object sender, RoutedEventArgs e)
+    private async void CaptureToWebP_Click(object sender, RoutedEventArgs e)
     {
         // WebP previews are per-module — capture the inner content of the
         // active slot at 100%. The ContentControl wrapper would add
@@ -130,16 +130,93 @@ public partial class MainWindow : Window
             rtb.Save(stream);
             stream.Seek(0, SeekOrigin.Begin);
 
-            // Load into SkiaSharp bitmap
+            // Load the Avalonia-rendered part into a mutable SkiaSharp bitmap
             using var skStream = new SKManagedStream(stream);
-            using var skBitmap = SKBitmap.Decode(skStream);
-            if (skBitmap == null)
+            var decoded = SKBitmap.Decode(skStream);
+            if (decoded == null)
             {
-                Debug.WriteLine("❌ Decoded SKBitmap is null");
+                Debug.WriteLine("❌ Decoded Avalonia SKBitmap is null");
                 return;
             }
+            
+            // Create the final bitmap (mutable) and draw the Avalonia part as the base layer
+            var skBitmap = new SKBitmap(decoded.Width, decoded.Height);
+            using (var canvas = new SKCanvas(skBitmap))
+            {
+                canvas.DrawBitmap(decoded, 0, 0);
+                decoded.Dispose();
 
-            // We captured at 100% so no additional visual scaling is required
+                // --- BEGIN WEBVIEW COMPOSITING ---
+                // Native HWNDs (like WebView) are invisible to RenderTargetBitmap.
+                // We find them in the visual tree and "stamp" their live content on top.
+                var webViews = control.GetVisualDescendants()
+                    .OfType<Control>()
+                    .Where(c => c.GetType().Name.Contains("WebView"))
+                    .ToList();
+
+                if (webViews.Any())
+                {
+                    Debug.WriteLine($"[RunModule] Compositing {webViews.Count} WebView(s) into screenshot...");
+                    
+                    // The native WebView HWND is manipulated by the modules to hide scrollbars
+                    // and leave a padding for the rounded border. We must replicate this visually.
+                    const double WebViewPadding = 6.0;
+                    const double ScrollbarExtra = 15.0;
+
+                    foreach (var wv in webViews)
+                    {
+                        var wvBitmap = await CaptureWebViewAsync(wv);
+                        if (wvBitmap == null)
+                        {
+                            Debug.WriteLine($"[RunModule] Failed to capture WebView: {wv.GetType().Name}");
+                            continue;
+                        }
+
+                        // Determine where the WebView sits relative to the module's top-left
+                        var transform = wv.TransformToVisual(control);
+                        if (transform.HasValue)
+                        {
+                            var rect = new Rect(wv.Bounds.Size).TransformToAABB(transform.Value);
+                            
+                            // The actual visible area inside the padding
+                            var visibleRect = new SKRect(
+                                (float)((rect.X + WebViewPadding) * captureScale),
+                                (float)((rect.Y + WebViewPadding) * captureScale),
+                                (float)((rect.Right - WebViewPadding) * captureScale),
+                                (float)((rect.Bottom - WebViewPadding) * captureScale)
+                            );
+
+                            // Calculate the crop source rect. The native wvBitmap includes
+                            // the ScrollbarExtra. We only want the visible portion.
+                            double logicalVisibleW = rect.Width - (WebViewPadding * 2);
+                            double logicalVisibleH = rect.Height - (WebViewPadding * 2);
+                            
+                            float srcVisibleW = wvBitmap.Width * (float)(logicalVisibleW / (logicalVisibleW + ScrollbarExtra));
+                            float srcVisibleH = wvBitmap.Height * (float)(logicalVisibleH / (logicalVisibleH + ScrollbarExtra));
+                            var srcRect = new SKRect(0, 0, srcVisibleW, srcVisibleH);
+                            
+                            // Apply rounded corners (module has CornerRadius 10, minus 6 padding = 4)
+                            using var path = new SKPath();
+                            float cornerRadius = 4f * captureScale;
+                            path.AddRoundRect(visibleRect, cornerRadius, cornerRadius);
+                            
+                            canvas.Save();
+                            canvas.ClipPath(path, SKClipOperation.Intersect, antialias: true);
+                            
+                            // Draw the WebView's pixels
+                            canvas.DrawBitmap(wvBitmap, srcRect, visibleRect);
+                            
+                            canvas.Restore();
+                            
+                            Debug.WriteLine($"[RunModule] ✓ Composited WebView at {visibleRect.Left:0},{visibleRect.Top:0}");
+                        }
+                        wvBitmap.Dispose();
+                    }
+                }
+                // --- END WEBVIEW COMPOSITING ---
+            }
+
+            // The 'skBitmap' now contains "both together": the Avalonia UI + the WebViews.
             SKBitmap bitmapToSave = skBitmap;
 
             // Proceed to saving below (history logic)
@@ -953,6 +1030,51 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             await ShowMessageDialog("Couldn't open folder", ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Uses reflection to reach into the Avalonia.WebView.Desktop implementation and
+    /// request a native CapturePreviewAsync from the underlying CoreWebView2.
+    /// Returns an SKBitmap containing the rendered web content.
+    /// </summary>
+    private async Task<SKBitmap?> CaptureWebViewAsync(Control webView)
+    {
+        try
+        {
+            // AvaloniaWebView on Windows uses a private _platformWebView field to hold its Win32 host
+            var platformField = webView.GetType().GetField("_platformWebView", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var platform = platformField?.GetValue(webView);
+            if (platform == null) return null;
+
+            // The platform-specific host has a _coreWebView2Controller property
+            var controllerProp = platform.GetType().GetProperty("_coreWebView2Controller", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var controller = controllerProp?.GetValue(platform);
+            if (controller == null) return null;
+
+            // The controller exposes the CoreWebView2 engine
+            var coreProp = controller.GetType().GetProperty("CoreWebView2");
+            var core = coreProp?.GetValue(controller);
+            if (core == null) return null;
+
+            // Call CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat.Png, stream)
+            var captureMethod = core.GetType().GetMethod("CapturePreviewAsync");
+            if (captureMethod == null) return null;
+
+            using var ms = new MemoryStream();
+            // CoreWebView2CapturePreviewImageFormat.Png is 0
+            var task = (Task)captureMethod.Invoke(core, new object[] { 0, ms })!;
+            if (task == null) return null;
+            
+            await task;
+
+            ms.Seek(0, SeekOrigin.Begin);
+            return SKBitmap.Decode(ms);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[RunModule] WebView capture failed: {ex.Message}");
+            return null;
         }
     }
 }
