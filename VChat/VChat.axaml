@@ -70,7 +70,7 @@
             Width="230"
             Height="350"
             CornerRadius="10"
-            ClipToBounds="True">
+            ClipToBounds="False">
         <Grid>
             <Grid x:Name="WebViewContainer"
                   HorizontalAlignment="Stretch"

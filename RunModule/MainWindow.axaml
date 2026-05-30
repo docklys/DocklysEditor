@@ -335,7 +335,7 @@
         </Border>
 
         <!-- ═════════ Module preview: one or two slots + cycle arrows ═════════ -->
-        <Grid Name="PreviewGrid" Grid.Row="1" ClipToBounds="True">
+        <Grid Name="PreviewGrid" Grid.Row="1" ClipToBounds="False">
             <!-- Module slots: one visible by default, two when Dual is toggled. -->
             <StackPanel Name="ModulePreviewPanel"
                         Orientation="Horizontal"

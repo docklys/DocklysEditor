@@ -905,31 +905,33 @@ namespace VChat
 
                                 _mobileUaApplied = true;
 
-                                // Script registered for every future document (survives in-app navigations).
-                                // Aggressively kills all scrolling via CSS and layout forcing.
-                                const string persistentScript =
-                                    "(function(){" +
-                                    "const css='html, body { overflow: hidden !important; position: fixed !important; width: 100% !important; height: 100% !important; touch-action: none !important; } " +
-                                    "* { scrollbar-width: none !important; -ms-overflow-style: none !important; } " +
-                                    "*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }';" +
-                                    "function apply(){" +
-                                    "let s=document.getElementById('_dockly_noscroll');" +
-                                    "if(!s){s=document.createElement('style');s.id='_dockly_noscroll';" +
-                                    "(document.head||document.documentElement).appendChild(s);}" +
-                                    "if(s.textContent!==css)s.textContent=css;" +
-                                    "if(document.body){" +
-                                    "document.body.style.setProperty('overflow','hidden','important');" +
-                                    "document.body.style.setProperty('position','fixed','important');" +
-                                    "document.body.style.setProperty('width','100%','important');" +
-                                    "document.body.style.setProperty('height','100%','important');" +
-                                    "}" +
-                                    "document.documentElement.style.setProperty('overflow','hidden','important');" +
-                                    "}" +
-                                    "apply();" +
-                                    "window.addEventListener('load', apply);" +
-                                    "window.addEventListener('DOMContentLoaded', apply);" +
-                                    "new MutationObserver(apply).observe(document.documentElement,{childList:true,subtree:true,attributes:true});" +
-                                    "})();";
+                                // Hide scrollbars persistently. The embedded site is an SPA that
+                                // rewrites <head>/<body> on navigation, wiping any injected
+                                // <style>. A setInterval re-appends our style every 500ms so the
+                                // hidden-scrollbar CSS survives DOM rewrites. Registered via
+                                // AddScriptToExecuteOnDocumentCreatedAsync so it runs for every
+                                // future document. NOTE: we only hide scrollbars (no
+                                // overflow:hidden/position:fixed) so the page still scrolls and
+                                // zooming does not clip content.
+                                const string persistentScript = @"
+(function(){
+    const css = '* { scrollbar-width: none !important; -ms-overflow-style: none !important; }'
+        + '::-webkit-scrollbar, *::-webkit-scrollbar { display: none !important; width: 0px !important; height: 0px !important; }'
+        + '::-webkit-scrollbar-thumb, *::-webkit-scrollbar-thumb { display: none !important; }'
+        + '::-webkit-scrollbar-track, *::-webkit-scrollbar-track { display: none !important; }';
+    const style = document.createElement('style');
+    style.id = 'persistent-hide-scroll';
+    style.appendChild(document.createTextNode(css));
+    function enforceScrollbarRemoval() {
+        if (!document.getElementById('persistent-hide-scroll')) {
+            if (document.head) { document.head.appendChild(style); }
+            else if (document.body) { document.body.appendChild(style); }
+        }
+    }
+    enforceScrollbarRemoval();
+    setInterval(enforceScrollbarRemoval, 500);
+})();
+";
                                 var addScript = coreType.GetMethod("AddScriptToExecuteOnDocumentCreatedAsync",
                                     new[] { typeof(string) });
                                 addScript?.Invoke(core, new object[] { persistentScript });
@@ -952,16 +954,15 @@ namespace VChat
                 {
                     const string liveScript =
                         "(function(){" +
-                        "const css='html, body { overflow: hidden !important; } " +
-                        "* { scrollbar-width: none !important; -ms-overflow-style: none !important; } " +
-                        "*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }';" +
+                        "const css='* { scrollbar-width: none !important; -ms-overflow-style: none !important; } " +
+                        "::-webkit-scrollbar, *::-webkit-scrollbar { display: none !important; width: 0px !important; height: 0px !important; background: transparent !important; } " +
+                        "::-webkit-scrollbar-thumb, *::-webkit-scrollbar-thumb { display: none !important; background: transparent !important; } " +
+                        "::-webkit-scrollbar-track, *::-webkit-scrollbar-track { display: none !important; background: transparent !important; }';" +
                         "function apply(){" +
                         "let s=document.getElementById('_dockly_noscroll');" +
                         "if(!s){s=document.createElement('style');s.id='_dockly_noscroll';" +
                         "(document.head||document.documentElement).appendChild(s);}" +
                         "if(s.textContent!==css)s.textContent=css;" +
-                        "if(document.body)document.body.style.setProperty('overflow','hidden','important');" +
-                        "document.documentElement.style.setProperty('overflow','hidden','important');" +
                         "}" +
                         "apply();" +
                         "if(!window._docklyObserver){" +
@@ -1295,11 +1296,28 @@ namespace VChat
                 catch { composedMatrix = transform.Value; }
             }
 
+            // Compute visual scale from the composed matrix to ensure padding and
+            // corner radius scale proportionally with the module's visual size.
+            double visualScale = 1.0;
+            try
+            {
+                var m = composedMatrix;
+                var p0 = m.Transform(new Point(0, 0));
+                var p1 = m.Transform(new Point(1, 0));
+                var p2 = m.Transform(new Point(0, 1));
+                double scaleX = Math.Sqrt(Math.Pow(p1.X - p0.X, 2) + Math.Pow(p1.Y - p0.Y, 2));
+                double scaleY = Math.Sqrt(Math.Pow(p2.X - p0.X, 2) + Math.Pow(p2.Y - p0.Y, 2));
+                if (double.IsFinite(scaleX) && double.IsFinite(scaleY) && scaleX > 0 && scaleY > 0)
+                    visualScale = (scaleX + scaleY) / 2.0;
+            }
+            catch { visualScale = 1.0; }
+
             var visualRect = new Rect(0, 0, local.Width, local.Height).TransformToAABB(composedMatrix);
             var scaling = topLevel.RenderScaling;
 
-            // Apply WebViewPadding (fixed gap on all sides)
-            double pad = WebViewPadding * scaling;
+            // Apply WebViewPadding (fixed gap on all sides). Scale the padding by 
+            // visualScale so the gap remains proportional to the module's zoomed size.
+            double pad = WebViewPadding * scaling * visualScale;
             int x = (int)(visualRect.X * scaling + pad);
             int y = (int)(visualRect.Y * scaling + pad);
             int w = Math.Max(1, (int)(visualRect.Width * scaling - pad * 2));
