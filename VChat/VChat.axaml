@@ -81,7 +81,7 @@
                     HorizontalAlignment="Center"
                     VerticalAlignment="Bottom"
                     Margin="0,0,0,1"
-                    Width="28" Height="12"
+                    Width="28" Height="4"
                     MinWidth="0" MinHeight="0"
                     Background="{DynamicResource ColorAccent}"
                     Opacity="0.85"
@@ -92,7 +92,7 @@
                 <Button.Template>
                     <ControlTemplate>
                         <Border Background="{TemplateBinding Background}"
-                                CornerRadius="6"
+                                CornerRadius="2"
                                 MinWidth="0" MinHeight="0"/>
                     </ControlTemplate>
                 </Button.Template>
