@@ -147,6 +147,7 @@ public sealed class SkinHost
         // the dev only picks once per machine.
         public string? DocklyInstallDir { get; set; }
         public Dictionary<string, string>? ThemeColors { get; set; }
+        public string? LastSelectedModule { get; set; }
     }
 
     // Load-modify-write helpers, so saving one field doesn't wipe the others.
@@ -163,6 +164,15 @@ public sealed class SkinHost
             Console.WriteLine($"[SkinHost] Failed to read {PersistPath}: {ex.Message}");
             return new PersistedState();
         }
+    }
+
+    public static string? LoadLastSelectedModule() => LoadState().LastSelectedModule;
+
+    public static void SaveLastSelectedModule(string? moduleName)
+    {
+        var s = LoadState();
+        s.LastSelectedModule = moduleName;
+        SaveState(s);
     }
 
     public static Dictionary<string, string>? LoadThemeColors() => LoadState().ThemeColors;

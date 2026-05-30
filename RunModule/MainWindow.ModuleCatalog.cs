@@ -164,6 +164,9 @@ public partial class MainWindow
         _currentIndex = index;
         var entry = _catalog[index];
 
+        // Save last selected module so it can be restored on restart.
+        SkinHost.SaveLastSelectedModule(entry.FolderName);
+
         try
         {
             var projFolder = Path.GetDirectoryName(entry.CsprojPath)!;

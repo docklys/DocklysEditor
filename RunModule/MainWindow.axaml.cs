@@ -57,6 +57,16 @@ public partial class MainWindow : Window
         Dispatcher.UIThread.Post(() =>
         {
             LoadCatalog();
+
+            // Restore last selected module from persisted state
+            var last = SkinHost.LoadLastSelectedModule();
+            if (last != null)
+            {
+                var idx = _catalog.FindIndex(e =>
+                    string.Equals(e.FolderName, last, StringComparison.OrdinalIgnoreCase));
+                if (idx >= 0) _currentIndex = idx;
+            }
+
             ShowModuleAtIndex(_currentIndex);
             UpdateScrollArrowVisibility();
         }, DispatcherPriority.Loaded);
