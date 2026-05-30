@@ -265,6 +265,17 @@ namespace spotify
             SettingsButton.Click += (_, _) => ToggleSettings(true);
             CloseSettingsButton.Click += (_, _) => ToggleSettings(false);
 
+            // Ctrl+scroll: drive the in-page scale-to-fit zoom. The in-page wheel listener
+            // (ScaleToFitScript) handles the common case where the cursor is over the native
+            // WebView HWND; this Avalonia-level handler is the fallback for when the wheel
+            // event is captured by the Avalonia window chrome instead of the HWND.
+            this.PointerWheelChanged += (_, e) =>
+            {
+                if (!e.KeyModifiers.HasFlag(KeyModifiers.Control)) return;
+                e.Handled = true;
+                RunCoreScript("window.__docklyNudgeScale&&window.__docklyNudgeScale(" + (e.Delta.Y < 0 ? "-0.1" : "0.1") + ")");
+            };
+
             RefreshSizeDisplay();
         }
         
@@ -714,6 +725,88 @@ namespace spotify
         // CoreWebView2 controller. Called from the WebView Loaded event and retried
         // until CoreWebView2 is ready, so it works even when the controller isn't
         // available immediately (e.g. in the main Docklys app).
+        // Injected into the WebView page to implement "scale-to-fit" Ctrl+scroll zoom.
+        // Instead of WebView2's built-in ZoomFactor (which REFLOWS responsive pages and trips
+        // their desktop breakpoint — widening the layout past the tile so it gets clipped at
+        // the sides), this applies a uniform CSS transform to <html>. Width/height are
+        // compensated by 1/scale so the scaled visual always fills exactly 100% of the
+        // viewport: content is never clipped at the sides in either zoom direction, and media
+        // queries still see the real (narrow) viewport so the mobile layout is preserved.
+        // The capture-phase wheel listener calls preventDefault() so WebView2's native zoom
+        // never fires. Guarded by __docklyScaleReady so repeated injection is a no-op.
+        private const string ScaleToFitScript = @"
+(function(){
+    if (window.__docklyScaleReady) return;
+    window.__docklyScaleReady = true;
+    if (typeof window.__docklyScale !== 'number') window.__docklyScale = 1;
+    function apply(){
+        var de = document.documentElement;
+        if(!de) return;
+        var s = window.__docklyScale;
+        if (s === 1){
+            de.style.transform = '';
+            de.style.transformOrigin = '';
+            de.style.width = '';
+            de.style.height = '';
+        } else {
+            de.style.transformOrigin = '0 0';
+            de.style.transform = 'scale(' + s + ')';
+            de.style.width = (100 / s) + '%';
+            de.style.height = (100 / s) + '%';
+        }
+    }
+    window.__docklyApplyScale = apply;
+    window.__docklyNudgeScale = function(d){
+        var s = (window.__docklyScale || 1) + d;
+        if (s < 0.25) s = 0.25;
+        if (s > 3) s = 3;
+        window.__docklyScale = Math.round(s * 100) / 100;
+        apply();
+    };
+    window.addEventListener('wheel', function(e){
+        if(!e.ctrlKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        window.__docklyNudgeScale(e.deltaY < 0 ? 0.1 : -0.1);
+    }, { passive:false, capture:true });
+    window.addEventListener('keydown', function(e){
+        if(!e.ctrlKey) return;
+        if(e.key === '+' || e.key === '='){ e.preventDefault(); window.__docklyNudgeScale(0.1); }
+        else if(e.key === '-' || e.key === '_'){ e.preventDefault(); window.__docklyNudgeScale(-0.1); }
+        else if(e.key === '0'){ e.preventDefault(); window.__docklyScale = 1; apply(); }
+    }, { capture:true });
+    setInterval(apply, 500);
+})();
+";
+
+        // Executes arbitrary JS in the WebView2 page via reflection. Used to drive the
+        // in-page scale-to-fit zoom from Avalonia-level input when the wheel event is
+        // captured by the Avalonia window instead of the native WebView HWND.
+        private void RunCoreScript(string js)
+        {
+            if (_webView == null) return;
+            try
+            {
+                _platformWebViewFieldCache ??= _webView.GetType().GetField(
+                    "_platformWebView", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (_platformWebViewFieldCache == null) return;
+                var platformWebView = _platformWebViewFieldCache.GetValue(_webView);
+                if (platformWebView == null) return;
+                var platformType = platformWebView.GetType();
+                if (_coreControllerPropCache == null || _coreControllerPropCache.DeclaringType != platformType)
+                    _coreControllerPropCache = platformType.GetProperty(
+                        "_coreWebView2Controller", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (_coreControllerPropCache == null) return;
+                var controller = _coreControllerPropCache.GetValue(platformWebView);
+                if (controller == null) return;
+                var core = controller.GetType().GetProperty("CoreWebView2")?.GetValue(controller);
+                if (core == null) return;
+                var exec = core.GetType().GetMethod("ExecuteScriptAsync", new[] { typeof(string) });
+                exec?.Invoke(core, new object[] { js });
+            }
+            catch { }
+        }
+
         private void ScheduleInitialSettings()
         {
             _mobileUaApplied = false;
@@ -815,6 +908,7 @@ namespace spotify
                                 var addScript = coreType.GetMethod("AddScriptToExecuteOnDocumentCreatedAsync",
                                     new[] { typeof(string) });
                                 addScript?.Invoke(core, new object[] { persistentScript });
+                                addScript?.Invoke(core, new object[] { ScaleToFitScript });
 
                                 // Navigate with the new UA.
                                 var navigateMethod = coreType.GetMethod("Navigate", new[] { typeof(string) });
@@ -848,6 +942,7 @@ namespace spotify
                         "})();";
                     var execScript = coreType.GetMethod("ExecuteScriptAsync", new[] { typeof(string) });
                     execScript?.Invoke(core, new object[] { liveScript });
+                    execScript?.Invoke(core, new object[] { ScaleToFitScript });
                 }
                 catch { }
 

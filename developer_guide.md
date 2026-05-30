@@ -267,7 +267,7 @@ There is no host-provided per-module settings API. You roll it yourself, but **t
 ```csharp
 private static readonly string SettingsPath = Path.Combine(
     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-    "Docklys", "Modules", "Clock", $"{ModuleId}.json");
+    "Docklys", "ModuleSaves", "Clock", $"{ModuleId}.json");
 
 private void SaveState() {
     Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);

@@ -302,10 +302,22 @@ namespace VChat
             }
         }
 
-        // Adjust WebView2's ZoomFactor by delta (e.g. +0.1 or -0.1).
-        // Used by the Ctrl+scroll handler to drive zoom when the HWND doesn't receive
-        // the wheel event (e.g. when keyboard focus is in the Avalonia parent window).
+        // Adjust the in-page scale-to-fit zoom by delta (e.g. +0.1 or -0.1).
+        // We deliberately do NOT touch WebView2's ZoomFactor: changing it reflows this
+        // responsive site and trips its desktop breakpoint (see TryApplyInitialSettings),
+        // widening the layout past the tile so it gets clipped at the sides. Instead we
+        // drive the injected ScaleToFitScript, which applies a uniform CSS transform that
+        // always fills exactly the viewport width without changing the layout viewport.
+        // Used as the fallback for when the wheel event is captured by the Avalonia parent
+        // window instead of the native WebView HWND (the in-page listener handles the rest).
         private void AdjustWebViewZoom(double delta)
+        {
+            RunCoreScript("window.__docklyNudgeScale&&window.__docklyNudgeScale(" + (delta < 0 ? "-0.1" : "0.1") + ")");
+        }
+
+        // Executes arbitrary JS in the WebView2 page via reflection. Drives the in-page
+        // scale-to-fit zoom from Avalonia-level input.
+        private void RunCoreScript(string js)
         {
             if (_webView == null) return;
             try
@@ -316,20 +328,71 @@ namespace VChat
                 var platformWebView = _platformWebViewFieldCache.GetValue(_webView);
                 if (platformWebView == null) return;
                 var platformType = platformWebView.GetType();
-                _coreControllerPropCache ??= platformType.GetProperty(
-                    "_coreWebView2Controller", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (_coreControllerPropCache == null || _coreControllerPropCache.DeclaringType != platformType)
+                    _coreControllerPropCache = platformType.GetProperty(
+                        "_coreWebView2Controller", BindingFlags.NonPublic | BindingFlags.Instance);
                 if (_coreControllerPropCache == null) return;
                 var controller = _coreControllerPropCache.GetValue(platformWebView);
                 if (controller == null) return;
-                var controllerType = controller.GetType();
-                var zoomProp = controllerType.GetProperty("ZoomFactor");
-                if (zoomProp?.PropertyType != typeof(double)) return;
-                var current = (double)(zoomProp.GetValue(controller) ?? 1.0);
-                var next = Math.Clamp(current + delta, 0.25, 5.0);
-                zoomProp.SetValue(controller, next);
+                var core = controller.GetType().GetProperty("CoreWebView2")?.GetValue(controller);
+                if (core == null) return;
+                var exec = core.GetType().GetMethod("ExecuteScriptAsync", new[] { typeof(string) });
+                exec?.Invoke(core, new object[] { js });
             }
             catch { }
         }
+
+        // Injected into the WebView page to implement "scale-to-fit" Ctrl+scroll zoom.
+        // Applies a uniform CSS transform to <html> with width/height compensated by 1/scale
+        // so the scaled visual always fills exactly 100% of the viewport — content is never
+        // clipped at the sides in either zoom direction, and media queries still see the real
+        // (narrow) viewport so the mobile layout is preserved. The capture-phase wheel
+        // listener calls preventDefault() so WebView2's native reflow-zoom never fires.
+        // Guarded by __docklyScaleReady so repeated injection is a no-op.
+        private const string ScaleToFitScript = @"
+(function(){
+    if (window.__docklyScaleReady) return;
+    window.__docklyScaleReady = true;
+    if (typeof window.__docklyScale !== 'number') window.__docklyScale = 1;
+    function apply(){
+        var de = document.documentElement;
+        if(!de) return;
+        var s = window.__docklyScale;
+        if (s === 1){
+            de.style.transform = '';
+            de.style.transformOrigin = '';
+            de.style.width = '';
+            de.style.height = '';
+        } else {
+            de.style.transformOrigin = '0 0';
+            de.style.transform = 'scale(' + s + ')';
+            de.style.width = (100 / s) + '%';
+            de.style.height = (100 / s) + '%';
+        }
+    }
+    window.__docklyApplyScale = apply;
+    window.__docklyNudgeScale = function(d){
+        var s = (window.__docklyScale || 1) + d;
+        if (s < 0.25) s = 0.25;
+        if (s > 3) s = 3;
+        window.__docklyScale = Math.round(s * 100) / 100;
+        apply();
+    };
+    window.addEventListener('wheel', function(e){
+        if(!e.ctrlKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        window.__docklyNudgeScale(e.deltaY < 0 ? 0.1 : -0.1);
+    }, { passive:false, capture:true });
+    window.addEventListener('keydown', function(e){
+        if(!e.ctrlKey) return;
+        if(e.key === '+' || e.key === '='){ e.preventDefault(); window.__docklyNudgeScale(0.1); }
+        else if(e.key === '-' || e.key === '_'){ e.preventDefault(); window.__docklyNudgeScale(-0.1); }
+        else if(e.key === '0'){ e.preventDefault(); window.__docklyScale = 1; apply(); }
+    }, { capture:true });
+    setInterval(apply, 500);
+})();
+";
 
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
@@ -935,6 +998,7 @@ namespace VChat
                                 var addScript = coreType.GetMethod("AddScriptToExecuteOnDocumentCreatedAsync",
                                     new[] { typeof(string) });
                                 addScript?.Invoke(core, new object[] { persistentScript });
+                                addScript?.Invoke(core, new object[] { ScaleToFitScript });
 
                                 // Authoritative navigation. The Url-property set in the Loaded
                                 // handler can be dropped when it fires before CoreWebView2 is
@@ -971,6 +1035,7 @@ namespace VChat
                         "})();";
                     var execScript = coreType.GetMethod("ExecuteScriptAsync", new[] { typeof(string) });
                     execScript?.Invoke(core, new object[] { liveScript });
+                    execScript?.Invoke(core, new object[] { ScaleToFitScript });
                 }
                 catch { }
 

@@ -113,7 +113,7 @@ All persistence is JSON, all paths are `Environment.GetFolderPath(SpecialFolder.
 
 ```
 Path.Combine(Environment.GetFolderPath(SpecialFolder.ApplicationData),
-             "Docklys", "Modules", <ModuleName>, "settings.json")
+             "Docklys", "ModuleSaves", <ModuleName>, "settings.json")
 ```
 
 `Directory.CreateDirectory` before writing. Read on `Loaded` (visual tree is present), write on user action — do not write on `Unloaded` because profile switches detach/re-attach frequently and would thrash the disk.

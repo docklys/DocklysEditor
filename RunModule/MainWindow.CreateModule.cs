@@ -195,6 +195,11 @@ public partial class MainWindow
             if (parent == null) break;
             dir = parent.FullName;
         }
+
+        // Try the standard AppData location.
+        var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Docklys", "Modules");
+        if (Directory.Exists(appData)) return appData;
+
         return null;
     }
 

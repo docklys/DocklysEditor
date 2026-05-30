@@ -783,6 +783,10 @@ public partial class MainWindow : Window
         }
         catch { }
 
+        // Try the standard AppData location.
+        var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Docklys", "Modules");
+        if (Directory.Exists(appData)) return appData;
+
         // Last sync fallback: the install dir the dev previously picked
         // via the folder picker (saved to %APPDATA%/Docklys/RunModule.json).
         // ResolveDocklyCustomModulesDirAsync uses this too, but exposing
@@ -957,7 +961,7 @@ public partial class MainWindow : Window
     {
         var savesDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Docklys");
+            "Docklys", "ModuleSaves");
         Directory.CreateDirectory(savesDir);
         try
         {

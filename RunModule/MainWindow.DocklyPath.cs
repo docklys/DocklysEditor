@@ -131,6 +131,15 @@ public partial class MainWindow
             catch (Exception ex) { Debug.WriteLine($"[Catalog] saved-dir scan failed: {ex.Message}"); }
         }
 
+        // (5) Standard AppData location.
+        var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Docklys", "Modules");
+        if (!Directory.Exists(appData))
+        {
+            try { Directory.CreateDirectory(appData); }
+            catch { /* ignore */ }
+        }
+        TryAdd(appData);
+
         return dirs.ToList();
     }
 

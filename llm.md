@@ -51,9 +51,9 @@ Visual transitions when switching profiles (tabs) or previewing in the editor.
 Clean, isolated storage for module-specific settings.
 
 - **Root Path**: `%APPDATA%/Docklys/` (Windows) or `~/.config/Docklys/` (Linux).
-- **Module Storage**: `%APPDATA%/Docklys/Modules/<ModuleName>/`
+- **Module Storage**: `%APPDATA%/Docklys/ModuleSaves/<ModuleName>/`
 - **Instance Persistence**: Filename MUST include `UniqueModuleId` to avoid collisions between multiple instances of the same module type.
-    - Convention: `%APPDATA%/Docklys/Modules/<ModuleName>/<UniqueModuleId>.json`
+    - Convention: `%APPDATA%/Docklys/ModuleSaves/<ModuleName>/<UniqueModuleId>.json`
 - **Lifecycle**:
     - **Load**: On `Loaded` event (visual tree present).
     - **Save**: On user action (toggle/slider change). **Avoid saving on `Unloaded`** to prevent disk thrashing during profile switches.

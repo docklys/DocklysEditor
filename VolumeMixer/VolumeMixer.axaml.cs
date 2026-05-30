@@ -636,7 +636,7 @@ namespace VolumeMixer
         private string GetJsonFilePath()
         {
             string moduleId = string.IsNullOrEmpty(UniqueModuleId) ? "NoIdSet" : UniqueModuleId;
-            string appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Docklys", "VolumeMixer");
+            string appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Docklys", "ModuleSaves", "VolumeMixer");
             Directory.CreateDirectory(appDataPath);
             return Path.Combine(appDataPath, $"VolumeMixer_{moduleId}.json");
         }
