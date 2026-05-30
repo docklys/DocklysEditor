@@ -882,46 +882,66 @@ namespace VChat
                         var settings = settingsProp?.GetValue(core);
                         if (settings != null)
                         {
+                            // Method 3: Disable native scrollbars at the engine level.
+                            try
+                            {
+                                var scrollEnabledProp = settings.GetType().GetProperty("IsScrollEnabled");
+                                if (scrollEnabledProp?.PropertyType == typeof(bool))
+                                    scrollEnabledProp.SetValue(settings, false);
+                            }
+                            catch { }
+
                             // Mobile UA is a best-effort hint only (this site ignores it for
                             // layout, but some PWAs key feature detection off it).
                             var uaProp = settings.GetType().GetProperty("UserAgent");
-                            try { uaProp?.SetValue(settings, MobileUserAgent); } catch { }
+                            if (uaProp != null && !_mobileUaApplied)
+                            {
+                                try { uaProp.SetValue(settings, MobileUserAgent); } catch { }
 
-                            // Ensure Ctrl+scroll zoom is not suppressed by the host.
-                            var zoomEnabledProp = settings.GetType().GetProperty("IsZoomControlEnabled");
-                            if (zoomEnabledProp?.PropertyType == typeof(bool))
-                                try { zoomEnabledProp.SetValue(settings, true); } catch { }
+                                // Ensure Ctrl+scroll zoom is not suppressed by the host.
+                                var zoomEnabledProp = settings.GetType().GetProperty("IsZoomControlEnabled");
+                                if (zoomEnabledProp?.PropertyType == typeof(bool))
+                                    try { zoomEnabledProp.SetValue(settings, true); } catch { }
+
+                                _mobileUaApplied = true;
+
+                                // Script registered for every future document (survives in-app navigations).
+                                // Aggressively kills all scrolling via CSS and layout forcing.
+                                const string persistentScript =
+                                    "(function(){" +
+                                    "const css='html, body { overflow: hidden !important; position: fixed !important; width: 100% !important; height: 100% !important; touch-action: none !important; } " +
+                                    "* { scrollbar-width: none !important; -ms-overflow-style: none !important; } " +
+                                    "*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }';" +
+                                    "function apply(){" +
+                                    "let s=document.getElementById('_dockly_noscroll');" +
+                                    "if(!s){s=document.createElement('style');s.id='_dockly_noscroll';" +
+                                    "(document.head||document.documentElement).appendChild(s);}" +
+                                    "if(s.textContent!==css)s.textContent=css;" +
+                                    "if(document.body){" +
+                                    "document.body.style.setProperty('overflow','hidden','important');" +
+                                    "document.body.style.setProperty('position','fixed','important');" +
+                                    "document.body.style.setProperty('width','100%','important');" +
+                                    "document.body.style.setProperty('height','100%','important');" +
+                                    "}" +
+                                    "document.documentElement.style.setProperty('overflow','hidden','important');" +
+                                    "}" +
+                                    "apply();" +
+                                    "window.addEventListener('load', apply);" +
+                                    "window.addEventListener('DOMContentLoaded', apply);" +
+                                    "new MutationObserver(apply).observe(document.documentElement,{childList:true,subtree:true,attributes:true});" +
+                                    "})();";
+                                var addScript = coreType.GetMethod("AddScriptToExecuteOnDocumentCreatedAsync",
+                                    new[] { typeof(string) });
+                                addScript?.Invoke(core, new object[] { persistentScript });
+
+                                // Authoritative navigation. The Url-property set in the Loaded
+                                // handler can be dropped when it fires before CoreWebView2 is
+                                // initialized, leaving a blank/black surface — so navigate here
+                                // once the core is actually ready (this runs on the retry loop).
+                                var navigateMethod = coreType.GetMethod("Navigate", new[] { typeof(string) });
+                                navigateMethod?.Invoke(core, new object[] { VChatUrl });
+                            }
                         }
-                        _mobileUaApplied = true;
-
-                        // Script registered for every future document (survives in-app navigations).
-                        // Uses a MutationObserver so VChat can't add the scrollbar back after our CSS runs.
-                        const string persistentScript =
-                            "(function(){" +
-                            "const css='html, body { overflow: hidden !important; } " +
-                            "* { scrollbar-width: none !important; -ms-overflow-style: none !important; } " +
-                            "*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }';" +
-                            "function apply(){" +
-                            "let s=document.getElementById('_dockly_noscroll');" +
-                            "if(!s){s=document.createElement('style');s.id='_dockly_noscroll';" +
-                            "(document.head||document.documentElement).appendChild(s);}" +
-                            "if(s.textContent!==css)s.textContent=css;" +
-                            "if(document.body)document.body.style.setProperty('overflow','hidden','important');" +
-                            "document.documentElement.style.setProperty('overflow','hidden','important');" +
-                            "}" +
-                            "apply();" +
-                            "new MutationObserver(apply).observe(document.documentElement,{childList:true,subtree:true,attributes:true});" +
-                            "})();";
-                        var addScript = coreType.GetMethod("AddScriptToExecuteOnDocumentCreatedAsync",
-                            new[] { typeof(string) });
-                        addScript?.Invoke(core, new object[] { persistentScript });
-
-                        // Authoritative navigation. The Url-property set in the Loaded
-                        // handler can be dropped when it fires before CoreWebView2 is
-                        // initialized, leaving a blank/black surface — so navigate here
-                        // once the core is actually ready (this runs on the retry loop).
-                        var navigateMethod = coreType.GetMethod("Navigate", new[] { typeof(string) });
-                        navigateMethod?.Invoke(core, new object[] { VChatUrl });
                     }
                     catch { }
                 }

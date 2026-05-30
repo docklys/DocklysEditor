@@ -768,37 +768,56 @@ namespace spotify
 
                         var settingsProp = coreType.GetProperty("Settings");
                         var settings = settingsProp?.GetValue(core);
-                        var uaProp = settings?.GetType().GetProperty("UserAgent");
-                        if (uaProp != null)
+                        if (settings != null)
                         {
-                            uaProp.SetValue(settings, MobileUserAgent);
-                            _mobileUaApplied = true;
+                            // Method 3: Disable native scrollbars at the engine level.
+                            try
+                            {
+                                var scrollEnabledProp = settings.GetType().GetProperty("IsScrollEnabled");
+                                if (scrollEnabledProp?.PropertyType == typeof(bool))
+                                    scrollEnabledProp.SetValue(settings, false);
+                            }
+                            catch { }
 
-                            // Script registered for every future document (survives in-app navigations).
-                            // Uses a MutationObserver so Spotify can't add the scrollbar back after our CSS runs.
-                            const string persistentScript =
-                                "(function(){" +
-                                "const css='html, body { overflow: hidden !important; } " +
-                                "* { scrollbar-width: none !important; -ms-overflow-style: none !important; } " +
-                                "*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }';" +
-                                "function apply(){" +
-                                "let s=document.getElementById('_dockly_noscroll');" +
-                                "if(!s){s=document.createElement('style');s.id='_dockly_noscroll';" +
-                                "(document.head||document.documentElement).appendChild(s);}" +
-                                "if(s.textContent!==css)s.textContent=css;" +
-                                "if(document.body)document.body.style.setProperty('overflow','hidden','important');" +
-                                "document.documentElement.style.setProperty('overflow','hidden','important');" +
-                                "}" +
-                                "apply();" +
-                                "new MutationObserver(apply).observe(document.documentElement,{childList:true,subtree:true,attributes:true});" +
-                                "})();";
-                            var addScript = coreType.GetMethod("AddScriptToExecuteOnDocumentCreatedAsync",
-                                new[] { typeof(string) });
-                            addScript?.Invoke(core, new object[] { persistentScript });
+                            var uaProp = settings.GetType().GetProperty("UserAgent");
+                            if (uaProp != null && !_mobileUaApplied)
+                            {
+                                uaProp.SetValue(settings, MobileUserAgent);
+                                _mobileUaApplied = true;
 
-                            // Navigate with the new UA.
-                            var navigateMethod = coreType.GetMethod("Navigate", new[] { typeof(string) });
-                            navigateMethod?.Invoke(core, new object[] { SpotifyUrl });
+                                // Script registered for every future document (survives in-app navigations).
+                                // Aggressively kills all scrolling via CSS and layout forcing.
+                                const string persistentScript =
+                                    "(function(){" +
+                                    "const css='html, body { overflow: hidden !important; position: fixed !important; width: 100% !important; height: 100% !important; touch-action: none !important; } " +
+                                    "* { scrollbar-width: none !important; -ms-overflow-style: none !important; } " +
+                                    "*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }';" +
+                                    "function apply(){" +
+                                    "let s=document.getElementById('_dockly_noscroll');" +
+                                    "if(!s){s=document.createElement('style');s.id='_dockly_noscroll';" +
+                                    "(document.head||document.documentElement).appendChild(s);}" +
+                                    "if(s.textContent!==css)s.textContent=css;" +
+                                    "if(document.body){" +
+                                    "document.body.style.setProperty('overflow','hidden','important');" +
+                                    "document.body.style.setProperty('position','fixed','important');" +
+                                    "document.body.style.setProperty('width','100%','important');" +
+                                    "document.body.style.setProperty('height','100%','important');" +
+                                    "}" +
+                                    "document.documentElement.style.setProperty('overflow','hidden','important');" +
+                                    "}" +
+                                    "apply();" +
+                                    "window.addEventListener('load', apply);" +
+                                    "window.addEventListener('DOMContentLoaded', apply);" +
+                                    "new MutationObserver(apply).observe(document.documentElement,{childList:true,subtree:true,attributes:true});" +
+                                    "})();";
+                                var addScript = coreType.GetMethod("AddScriptToExecuteOnDocumentCreatedAsync",
+                                    new[] { typeof(string) });
+                                addScript?.Invoke(core, new object[] { persistentScript });
+
+                                // Navigate with the new UA.
+                                var navigateMethod = coreType.GetMethod("Navigate", new[] { typeof(string) });
+                                navigateMethod?.Invoke(core, new object[] { SpotifyUrl });
+                            }
                         }
                     }
                     catch { }
