@@ -78,6 +78,7 @@ public partial class MainWindow
         try
         {
             CloneModuleInto(solutionDir, targetDir, name, spec.TileWidth, spec.TileHeight, templateName);
+            GenerateLicenseFile(targetDir, spec.License);
         }
         catch (Exception ex)
         {
@@ -107,7 +108,7 @@ public partial class MainWindow
         await ShowMessageDialog("Module created", msg);
     }
 
-    private sealed record NewModuleSpec(string Name, int TileWidth, int TileHeight);
+    private sealed record NewModuleSpec(string Name, int TileWidth, int TileHeight, string License);
 
     // Walk up from the running editor's BaseDirectory looking for the
     // editor solution. Mirrors the existing FindVolumeMixerProject /
@@ -272,6 +273,59 @@ public partial class MainWindow
             {
                 Debug.WriteLine($"[CreateModule] size rewrite failed for {file}: {ex.Message}");
             }
+        }
+    }
+
+    private static void GenerateLicenseFile(string targetDir, string license)
+    {
+        if (string.IsNullOrEmpty(license) || license == "None") return;
+
+        string content = "";
+        int year = DateTime.Now.Year;
+        
+        switch (license)
+        {
+            case "MIT":
+                content = $@"MIT License
+
+Copyright (c) {year}
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the ""Software""), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED ""AS IS"", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.";
+                break;
+            case "Apache 2.0":
+                content = @"Apache License
+Version 2.0, January 2004
+http://www.apache.org/licenses/
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION";
+                break;
+            case "GPLv3":
+                content = @"GNU GENERAL PUBLIC LICENSE
+Version 3, 29 June 2007
+
+Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>";
+                break;
+        }
+
+        if (!string.IsNullOrEmpty(content))
+        {
+            File.WriteAllText(Path.Combine(targetDir, "LICENSE.txt"), content);
         }
     }
 
@@ -605,6 +659,21 @@ public partial class MainWindow
             TextWrapping = TextWrapping.Wrap,
         };
 
+        var licenseBox = new ComboBox
+        {
+            Width = 320,
+            ItemsSource = new[] { "None", "MIT", "Apache 2.0", "GPLv3" },
+            SelectedIndex = 0
+        };
+        var licenseHint = new TextBlock
+        {
+            Text = "Choose an open-source license. A LICENSE file will be generated automatically.",
+            FontSize = 11,
+            Foreground = Brushes.Gray,
+            Margin = new Thickness(0, 4, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+        };
+
         var okBtn = new Button { Content = "Create", IsDefault = true, Padding = new Thickness(16, 4) };
         var cancel = new Button
         {
@@ -619,7 +688,7 @@ public partial class MainWindow
             Title = "Create New Module",
             Width = 480,
             MinWidth = 380,
-            MinHeight = 180,
+            MinHeight = 240,
             SizeToContent = SizeToContent.Height,
             CanResize = true,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -635,6 +704,9 @@ public partial class MainWindow
                     new TextBlock { Text = "Tile size", Foreground = Brushes.White, Margin = new Thickness(0, 12, 0, 0) },
                     sizeRow,
                     sizeHint,
+                    new TextBlock { Text = "License", Foreground = Brushes.White, Margin = new Thickness(0, 12, 0, 0) },
+                    licenseBox,
+                    licenseHint,
                     new StackPanel
                     {
                         Orientation = Orientation.Horizontal,
@@ -653,7 +725,8 @@ public partial class MainWindow
             if (string.IsNullOrEmpty(rawName)) { nameBox.Focus(); return; }
             if (!int.TryParse(widthBox.Text, out var w) || w < 1) { widthBox.Focus(); return; }
             if (!int.TryParse(heightBox.Text, out var h) || h < 1) { heightBox.Focus(); return; }
-            tcs.TrySetResult(new NewModuleSpec(rawName, w, h));
+            var license = licenseBox.SelectedItem?.ToString() ?? "None";
+            tcs.TrySetResult(new NewModuleSpec(rawName, w, h, license));
             window.Close();
         };
         cancel.Click += (_, _) =>
