@@ -164,24 +164,30 @@ private void OnUnloaded(object? sender, RoutedEventArgs e) {
 
 ## 7. Saving State to `%APPDATA%`
 
-Persist your module-specific settings using the explicit convention:
+Docklys does **not** provide a global settings API for modules. Modules are responsible for persisting their own state. However, to keep the user's filesystem clean, you are **only** allowed to save internal custom settings to a specific directory convention.
 
+### The Required Path Convention
 ```csharp
 private static readonly string SettingsPath = Path.Combine(
     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
     "Docklys", "ModuleSaves", "Clock", $"{UniqueModuleId}.json");
+```
 
+### Persistence Best Practices
+1. **Always Use `UniqueModuleId`:** Your filename **must** incorporate the `UniqueModuleId` assigned to your instance by the host. A user can place multiple "Clock" modules on the same grid; using just "settings.json" will cause the instances to overwrite each other.
+2. **Create Directories Before Writing:** The host doesn't create your module's save folder for you. Use `Directory.CreateDirectory` before your `File.WriteAllText` call.
+3. **Save on User Action, Load on `Loaded`:** 
+   - **Load:** Load your state when the `Loaded` event fires, as this guarantees your module is fully attached to the visual tree. 
+   - **Save:** Only save when the user changes a setting (e.g., toggling a switch or ending a slider drag). **Never auto-save in the `Unloaded` event**. Tab switches detach and re-attach modules rapidly; saving on `Unloaded` will thrash the user's disk.
+4. **Use JSON:** Stick to `System.Text.Json` for simple, human-readable configurations.
+
+```csharp
 private void SaveState() {
     Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
     var json = JsonSerializer.Serialize(new ClockState { ShowSeconds = true });
     File.WriteAllText(SettingsPath, json);
 }
 ```
-
-**Rules:**
-1. Include `UniqueModuleId` in the filename to prevent collision between multiple instances of your module.
-2. Create the directory before writing.
-3. Save on user action (e.g., toggle change), not on `Unloaded`.
 
 ---
 

@@ -108,13 +108,14 @@ All persistence is JSON under `%APPDATA%/Docklys/` (Windows), `~/.config/Docklys
 - `Profiles/<profileId>_layout.json` (Placements)
 - `RunModule.json` (Editor-side skin choice)
 
-**Module-private save data**: NO host-provided settings file. MUST use convention:
+**Module-private save data**: NO host-provided settings API exists. Modules **MUST ONLY** save their internal custom settings using the following convention to keep the file system clean:
 `%APPDATA%/Docklys/ModuleSaves/<ModuleName>/<UniqueModuleId>.json`
-Filename MUST include `UniqueModuleId` to avoid collisions between instances.
+
+**CRITICAL:** The filename **MUST** include `UniqueModuleId` to avoid collisions between multiple instances of the same module on the grid. Never hardcode to `settings.json`!
 
 **Lifecycle:**
 - **Load**: On `Loaded` event (visual tree present).
-- **Save**: On user action. **Avoid saving on `Unloaded`** (prevents disk thrashing during profile switches).
+- **Save**: On user action (e.g., toggle changes). **Avoid saving on `Unloaded`** (prevents disk thrashing during profile switches).
 
 ---
 
