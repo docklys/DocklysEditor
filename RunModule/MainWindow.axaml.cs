@@ -28,7 +28,7 @@ public partial class MainWindow : Window
     private string? _lastDocklyExePath;
 
     public MainWindow()
-    {
+/    {
         InitializeComponent();
         this.Loaded += MainWindow_Loaded;
     }
