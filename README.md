@@ -21,8 +21,8 @@ When you launch the `RunModule` project, you will be presented with the Editor W
 - **Zoom Slider:** Scales the module strip visually, allowing you to test how your module renders at different UI scales.
 - **Skin Selector (Dropdown):** Test your module against different Docklys themes (e.g., Default, Industrial, etc.). The editor loads the exact same `SkinKeys` that the main app uses, ensuring 100% fidelity.
 - **📷 Capture WebP (Screenshot):** Automatically captures a WebP screenshot of the currently active (focused) module. This is extremely useful for generating promotional assets for your module.
-- **✚ Create Module:** Scaffolds a brand new module. It clones the `DefaultModule`, renames namespaces and classes to your chosen name, automatically runs `dotnet sln add` to link it to the solution, and adds it as a `<ProjectReference>` to the editor.
-- **⚡ Push to Docklys:** Compiles the active module and copies its resulting `.dll` directly into the local Docklys `CustomModules/` directory.
+- **✚ Create Module:** Scaffolds a brand new module. It clones a module of choice making the selected module act as a template, renames namespaces and classes to your chosen name, automatically runs `dotnet sln add` to link it to the solution, and adds it as a `<ProjectReference>` to the editor.
+- **Build / Push to Docklys:** Compiles the active module and copies its resulting `.dll` directly into the local Docklys `CustomModules/` directory.
 
 ## Tutorial: Setting Up Your First Module
 
@@ -38,6 +38,6 @@ Follow these steps to create your first module from scratch:
 
 - **Define Widths Properly:** Make sure to define `PreferredTileWidth` and `PreferredTileHeight` in your module class so Dockly can adapt them properly for design accuracy.
 - **Theme Support:** Always use `{DynamicResource <Key>}` from `SkinKeys.cs` instead of hardcoding colors or styles.
-- **Publishing:** When publishing your module (e.g., as a NuGet package or downloadable DLL), ensure it includes an icon, a descriptive name, and a proper license.
+- **Publishing:** When publishing your module https://docklys.qwqc.dedyn.io/DocklysEditor
 
 For a comprehensive guide on architecture, state persistence, and theming, please read the [Documentation](Documentation.md) and [AI Architecture](ai_architecture.md).
