@@ -595,10 +595,33 @@ namespace VChat
             catch { return true; }
         }
 
+        // Ask the (shared, process-wide) WebView2 browser process to hide Chromium's native
+        // scrollbars from the very first painted frame — the CSS we inject only applies after
+        // navigation, so without this the first frame flashes a scrollbar. The flag is read when
+        // the browser process starts, so we set it before creating this module's webview (the
+        // first WebView2 in RunModule / the editor preview). The main Dockly app sets the same
+        // flag even earlier in Dockly.Desktop's Program.cs, before its settings-window webview
+        // starts the process. Append-guarded so it never clobbers/duplicates existing args.
+        // Content stays scrollable; only the visible scrollbars are suppressed.
+        private static void EnsureWebViewScrollbarsHidden()
+        {
+            try
+            {
+                const string varName = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+                const string flag = "--hide-scrollbars";
+                var existing = Environment.GetEnvironmentVariable(varName) ?? string.Empty;
+                if (existing.IndexOf(flag, StringComparison.OrdinalIgnoreCase) < 0)
+                    Environment.SetEnvironmentVariable(varName, (existing + " " + flag).Trim());
+            }
+            catch { }
+        }
+
         private void TryCreateWebView()
         {
             try
             {
+                EnsureWebViewScrollbarsHidden();
+
                 var webViewType = ResolveWebViewType();
                 if (webViewType == null)
                 {

@@ -442,10 +442,33 @@ namespace spotify
             catch { return true; }
         }
 
+        // Ask the (shared, process-wide) WebView2 browser process to hide Chromium's native
+        // scrollbars from the very first painted frame — the CSS we inject only applies after
+        // navigation, so without this the first frame flashes a scrollbar. The flag is read when
+        // the browser process starts, so we set it before creating this module's webview (the
+        // first WebView2 in RunModule / the editor preview). The main Dockly app sets the same
+        // flag even earlier in Dockly.Desktop's Program.cs, before its settings-window webview
+        // starts the process. Append-guarded so it never clobbers/duplicates existing args.
+        // Content stays scrollable; only the visible scrollbars are suppressed.
+        private static void EnsureWebViewScrollbarsHidden()
+        {
+            try
+            {
+                const string varName = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
+                const string flag = "--hide-scrollbars";
+                var existing = Environment.GetEnvironmentVariable(varName) ?? string.Empty;
+                if (existing.IndexOf(flag, StringComparison.OrdinalIgnoreCase) < 0)
+                    Environment.SetEnvironmentVariable(varName, (existing + " " + flag).Trim());
+            }
+            catch { }
+        }
+
         private void TryCreateWebView()
         {
             try
             {
+                EnsureWebViewScrollbarsHidden();
+
                 var webViewType = ResolveWebViewType();
                 if (webViewType == null)
                 {
@@ -802,6 +825,13 @@ namespace spotify
         private const string MobileUserAgent =
             "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36";
         private bool _mobileUaApplied;
+        // Latches once we've told Chromium to synthesize touch events from mouse input.
+        // The mobile UA makes Spotify's React UI bind touchstart/touchmove/touchend and ignore
+        // mouse events, so desktop mouse drags never move the volume / track-scrubber sliders.
+        // Enabling CDP touch emulation makes WebView2 repackage mouse drags as single-finger
+        // touches, which those sliders do respond to. Persists across navigations on the
+        // CoreWebView2, so it only needs to be applied once.
+        private bool _touchEmulationApplied;
         // Pending zoom retry state when the controller isn't ready yet.
         private DispatcherTimer? _zoomRetryTimer;
         private double? _pendingZoomVal;
@@ -864,6 +894,60 @@ namespace spotify
         else if(e.key === '0'){ e.preventDefault(); window.__docklyScale = 1; apply(); }
     }, { capture:true });
     setInterval(apply, 500);
+})();
+";
+
+        // SPOTIFY-ONLY: after the page finishes loading, click once at roughly 10% of the
+        // height below center (x=50%, y=60% of the viewport) — where Spotify shows a "Continue"
+        // button that must be dismissed. Registered as a document-created script so it arms on
+        // every navigation, but a sessionStorage guard makes it fire only ONCE per browsing
+        // session. It waits for window 'load' + 3s (the button takes ~3s to appear), then polls
+        // ~10s for a Continue-looking control at that point; if none is found by then it falls back
+        // to clicking whatever sits at that point, as requested. Dispatches a full pointer/mouse
+        // sequence so React's handlers fire. Synthetic (untrusted) events — fine for a normal
+        // button; would not satisfy actions that require a trusted user gesture.
+        private const string AutoClickContinueScript = @"
+(function(){
+    function markPoint(x, y){
+        try {
+            var d = document.createElement('div');
+            d.style.cssText = 'position:fixed;left:'+(x-13)+'px;top:'+(y-13)+'px;width:26px;height:26px;'
+                + 'border-radius:50%;background:rgba(255,0,0,.45);border:3px solid #ff0000;'
+                + 'box-shadow:0 0 14px 5px rgba(255,0,0,.9);z-index:2147483647;pointer-events:none;';
+            (document.body || document.documentElement).appendChild(d);
+            setTimeout(function(){ try { d.remove(); } catch(e){} }, 5000);
+        } catch(e){}
+    }
+    function outline(el){
+        try {
+            if (el && el.style){
+                el.style.outline = '3px solid #ff0000';
+                el.style.outlineOffset = '2px';
+                setTimeout(function(){ try { el.style.outline=''; } catch(e){} }, 5000);
+            }
+        } catch(e){}
+    }
+    function go(){
+        var x = Math.round(window.innerWidth * 0.5);
+        var y = Math.round(window.innerHeight * 0.57);
+        markPoint(x, y);
+        var el = document.elementFromPoint(x, y);
+        var t = el ? (el.closest('button, a, [role=button], [tabindex], input, [onclick]') || el) : null;
+        outline(t || el);
+        try { console.log('[Dockly] auto-click @', x, y, 'el=', el && el.tagName, 'target=', t && t.tagName, (t && (t.textContent||'').trim().slice(0,40))); } catch(e){}
+        if (!t) return;
+        var o = { bubbles:true, cancelable:true, composed:true, clientX:x, clientY:y, view:window, button:0 };
+        try {
+            t.dispatchEvent(new PointerEvent('pointerdown', o));
+            t.dispatchEvent(new MouseEvent('mousedown', o));
+            t.dispatchEvent(new PointerEvent('pointerup', o));
+            t.dispatchEvent(new MouseEvent('mouseup', o));
+            t.dispatchEvent(new MouseEvent('click', o));
+        } catch(e) { try { t.click(); } catch(e2){} }
+    }
+    function start(){ setTimeout(go, 3000); }
+    if (document.readyState === 'complete') start();
+    else window.addEventListener('load', start);
 })();
 ";
 
@@ -937,6 +1021,10 @@ namespace spotify
 
                 var coreType = core.GetType();
 
+                // Make desktop mouse drags drive Spotify's touch-only mobile sliders
+                // (volume + track scrubber). Safe to attempt every tick; guarded internally.
+                TryEnableTouchEmulation(core, coreType);
+
                 if (!_mobileUaApplied)
                 {
                     try
@@ -997,6 +1085,7 @@ namespace spotify
                                     new[] { typeof(string) });
                                 addScript?.Invoke(core, new object[] { persistentScript });
                                 addScript?.Invoke(core, new object[] { ScaleToFitScript });
+                                addScript?.Invoke(core, new object[] { AutoClickContinueScript });
 
                                 // Navigate with the new UA.
                                 var navigateMethod = coreType.GetMethod("Navigate", new[] { typeof(string) });
@@ -1037,6 +1126,38 @@ namespace spotify
                 return _mobileUaApplied;
             }
             catch { return false; }
+        }
+
+        // Issue the Chromium DevTools Protocol commands that make WebView2 translate desktop
+        // mouse input into touch events. Without this, Spotify's mobile React UI (selected via
+        // the mobile UA) only listens for touch events, so the volume and track-position
+        // sliders ignore mouse clicks/drags entirely. setEmitTouchEventsForMouse repackages the
+        // pointer as a single finger; setTouchEmulationEnabled advertises a touchscreen
+        // (maxTouchPoints=1) so the page commits to its touch code paths. Called via reflection
+        // because CoreWebView2 is only reachable reflectively here; guarded so it runs once.
+        private void TryEnableTouchEmulation(object core, Type coreType)
+        {
+            if (_touchEmulationApplied) return;
+            try
+            {
+                var cdp = coreType.GetMethod("CallDevToolsProtocolMethodAsync",
+                    new[] { typeof(string), typeof(string) });
+                if (cdp == null) return;
+
+                cdp.Invoke(core, new object[]
+                {
+                    "Emulation.setEmitTouchEventsForMouse",
+                    "{\"enabled\":true,\"configuration\":\"mobile\"}"
+                });
+                cdp.Invoke(core, new object[]
+                {
+                    "Emulation.setTouchEmulationEnabled",
+                    "{\"enabled\":true,\"maxTouchPoints\":1}"
+                });
+
+                _touchEmulationApplied = true;
+            }
+            catch { }
         }
 
         private void StartZoomRetry(double zoomVal, int w, int h)
@@ -1391,7 +1512,7 @@ namespace spotify
             var visualRect = new Rect(0, 0, local.Width, local.Height).TransformToAABB(composedMatrix);
             var scaling = topLevel.RenderScaling;
 
-            // Apply WebViewPadding (fixed gap on all sides). Scale the padding by 
+            // Apply WebViewPadding (fixed gap on all sides). Scale the padding by
             // visualScale so the gap remains proportional to the module's zoomed size.
             double pad = WebViewPadding * scaling * visualScale;
             int x = (int)(visualRect.X * scaling + pad);
