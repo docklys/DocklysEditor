@@ -897,44 +897,19 @@ namespace spotify
 })();
 ";
 
-        // SPOTIFY-ONLY: after the page finishes loading, click once at roughly 10% of the
-        // height below center (x=50%, y=60% of the viewport) — where Spotify shows a "Continue"
-        // button that must be dismissed. Registered as a document-created script so it arms on
-        // every navigation, but a sessionStorage guard makes it fire only ONCE per browsing
-        // session. It waits for window 'load' + 3s (the button takes ~3s to appear), then polls
-        // ~10s for a Continue-looking control at that point; if none is found by then it falls back
-        // to clicking whatever sits at that point, as requested. Dispatches a full pointer/mouse
-        // sequence so React's handlers fire. Synthetic (untrusted) events — fine for a normal
-        // button; would not satisfy actions that require a trusted user gesture.
+        // SPOTIFY-ONLY: 3s after the page finishes loading, click the control at x=50% / y=57%
+        // of the viewport - the Continue button Spotify shows on first load. Injected as a
+        // document-created script so it runs on each page load (Spotify is an SPA, so effectively
+        // once). Clicks the nearest clickable ancestor of the element at that point and dispatches
+        // a full pointer/mouse sequence so React handlers fire. Synthetic events - fine for a
+        // normal button.
         private const string AutoClickContinueScript = @"
 (function(){
-    function markPoint(x, y){
-        try {
-            var d = document.createElement('div');
-            d.style.cssText = 'position:fixed;left:'+(x-13)+'px;top:'+(y-13)+'px;width:26px;height:26px;'
-                + 'border-radius:50%;background:rgba(255,0,0,.45);border:3px solid #ff0000;'
-                + 'box-shadow:0 0 14px 5px rgba(255,0,0,.9);z-index:2147483647;pointer-events:none;';
-            (document.body || document.documentElement).appendChild(d);
-            setTimeout(function(){ try { d.remove(); } catch(e){} }, 5000);
-        } catch(e){}
-    }
-    function outline(el){
-        try {
-            if (el && el.style){
-                el.style.outline = '3px solid #ff0000';
-                el.style.outlineOffset = '2px';
-                setTimeout(function(){ try { el.style.outline=''; } catch(e){} }, 5000);
-            }
-        } catch(e){}
-    }
     function go(){
         var x = Math.round(window.innerWidth * 0.5);
         var y = Math.round(window.innerHeight * 0.57);
-        markPoint(x, y);
         var el = document.elementFromPoint(x, y);
         var t = el ? (el.closest('button, a, [role=button], [tabindex], input, [onclick]') || el) : null;
-        outline(t || el);
-        try { console.log('[Dockly] auto-click @', x, y, 'el=', el && el.tagName, 'target=', t && t.tagName, (t && (t.textContent||'').trim().slice(0,40))); } catch(e){}
         if (!t) return;
         var o = { bubbles:true, cancelable:true, composed:true, clientX:x, clientY:y, view:window, button:0 };
         try {
