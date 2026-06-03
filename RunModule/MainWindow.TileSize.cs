@@ -266,7 +266,7 @@ public partial class MainWindow
         {
             if (!int.TryParse(widthBox.Text,  out var w) || w < 1) { widthBox.Focus();  return; }
             if (!int.TryParse(heightBox.Text, out var h) || h < 1) { heightBox.Focus(); return; }
-            tcs.TrySetResult(new NewModuleSpec(string.Empty, w, h));
+            tcs.TrySetResult(new NewModuleSpec(string.Empty, w, h, string.Empty));
             window.Close();
         };
         cancel.Click += (_, _) => { tcs.TrySetResult(null); window.Close(); };

@@ -66,7 +66,7 @@ namespace spotify
                         Console.WriteLine("[Spotify] SetTileSize: performing relayout/resync attempt");
                         if (_webView == null)
                         {
-                            if (!_webViewCreated) TryCreateWebView();
+                            if (!_webViewCreated) RequestCreateWebView();
 
                             // Start a short retry timer that will attempt to apply the
                             // relayout as soon as the WebView becomes available.
@@ -215,6 +215,16 @@ namespace spotify
         private bool _webViewCreated;
         private bool _isFrozen;
 
+        // Set while we wait for the dock's first slide-in before creating the WebView
+        // (see RequestCreateWebView) so the un-painted WebView surface never flashes at startup.
+        private DispatcherTimer? _revealWaitTimer;
+
+        // Latches true once the dock has completed its first slide-in this session. The
+        // startup warm-up that caused the off-screen black flash only runs before that first
+        // reveal, so afterwards every (re)created WebView is made immediately and glides in
+        // with the dock instead of popping in after the slide — deferral is first-reveal-only.
+        private static bool _firstRevealDone;
+
         // IInteractionFreezable — the dock settings panel is opening. The WebView must stay
         // VISIBLE at all times (both in normal dock mode and while settings is open).
         // Dragging is handled host-side via SharpHook (the global hook fires through the
@@ -235,8 +245,7 @@ namespace spotify
             // If we skipped WebView creation because we were frozen before attach, create it now.
             if (_topLevel != null && _webView == null && !_webViewCreated)
             {
-                _webViewCreated = true;
-                TryCreateWebView();
+                RequestCreateWebView();
             }
             if (_webView != null)
             {
@@ -332,11 +341,8 @@ namespace spotify
                     }, DispatcherPriority.Background);
                 }));
 
-            if (!_webViewCreated && !_isFrozen)
-            {
-                _webViewCreated = true;
-                TryCreateWebView();
-            }
+            // The first slide-in gates WebView creation so it never flashes black off-screen at startup.
+            RequestCreateWebView();
         }
 
         protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -357,6 +363,8 @@ namespace spotify
             _webViewBoundsSub = null;
             _continuousSyncTimer?.Stop();
             _continuousSyncTimer = null;
+            _revealWaitTimer?.Stop();
+            _revealWaitTimer = null;
             _shiftDown = false;
             _webViewHwnd = IntPtr.Zero;
         }
@@ -379,6 +387,59 @@ namespace spotify
                 ApplyWebViewRoundedCorners();
             };
             _continuousSyncTimer.Start();
+        }
+
+        // Defer WebView2 creation until the dock has actually slid on-screen for the first
+        // time. AvaloniaWebView's NativeControlHost positions the native HWND at its LAYOUT
+        // rect, ignoring MainWindow's slide RenderTransform — so a WebView created while the
+        // dock is parked off-screen-left still flashes its un-painted black surface at the
+        // on-screen resting position until our first SyncWebViewHwndToVisualBounds moves it.
+        // Creating only once the host is revealed removes that startup flash. The module
+        // editor / RunModule have no slide transform on the TopLevel, so we create at once.
+        private void RequestCreateWebView()
+        {
+            if (_webViewCreated || _isFrozen) return;
+
+            if (_firstRevealDone || IsHostRevealed())
+            {
+                _revealWaitTimer?.Stop();
+                _revealWaitTimer = null;
+                _firstRevealDone = true;
+                _webViewCreated = true;
+                TryCreateWebView();
+                return;
+            }
+
+            if (_revealWaitTimer != null) return; // already waiting for the first slide-in
+            _revealWaitTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+            _revealWaitTimer.Tick += (_, _) =>
+            {
+                if (_isFrozen || !IsHostRevealed()) return;
+                _revealWaitTimer?.Stop();
+                _revealWaitTimer = null;
+                _firstRevealDone = true;
+                if (!_webViewCreated)
+                {
+                    _webViewCreated = true;
+                    TryCreateWebView();
+                }
+            };
+            _revealWaitTimer.Start();
+        }
+
+        // True when the host is not parked off-screen by its slide transform. The Dockly
+        // window parks the dock at transform.X = -windowWidth and rests it at a positive X
+        // (>= 10) once slid in; a transient X == 0 also occurs during the startup pre-render
+        // warm-up, so we require strictly positive X to ignore that. Hosts without a slide
+        // transform on the TopLevel (the editor) report revealed immediately.
+        private bool IsHostRevealed()
+        {
+            var top = TopLevel.GetTopLevel(this);
+            if (top == null) return false;
+            var rt = top.RenderTransform;
+            if (rt == null) return true;
+            try { return rt.Value.Transform(new Point(0, 0)).X > 5; }
+            catch { return true; }
         }
 
         private void TryCreateWebView()
@@ -672,11 +733,21 @@ namespace spotify
         {
             if (_syncPending) return;
             _syncPending = true;
-            Dispatcher.UIThread.Post(() =>
+            try
+            {
+                if (_webView is Layoutable l)
+                {
+                    l.InvalidateArrange();
+                    (TopLevel.GetTopLevel(_webView) as Layoutable)?.InvalidateArrange();
+                }
+
+                SyncWebViewHwndToVisualBounds();
+                ApplyWebViewRoundedCorners();
+            }
+            finally
             {
                 _syncPending = false;
-                SyncWebViewHwndToVisualBounds();
-            }, DispatcherPriority.Render);
+            }
         }
 
         private void DisposeAncestorSubs()
@@ -710,6 +781,23 @@ namespace spotify
         // SetWindowRgn clip is set to these narrower values to hide those extra pixels.
         private int _visibleHwndW;
         private int _visibleHwndH;
+
+        // Verbose per-frame diagnostics. OFF by default. The slide-in re-syncs the native
+        // WebView HWND ~60×/s; synchronous Console I/O on the UI thread overruns the 16ms
+        // frame budget, which desyncs the WebView surface from the Avalonia-composited tile
+        // (it appears to "lag"/"glitch"/slide at the wrong speed). Flip to true only when
+        // actively debugging the HWND-sync path.
+        private const bool VerboseWebViewLog = false;
+        private static void DebugLog(string msg) { if (VerboseWebViewLog) Console.WriteLine(msg); }
+
+        // Last applied rounded-corner region key. The clip region depends only on HWND +
+        // size + diameter, none of which change while the dock is merely sliding. Recreating
+        // a GDI region and re-clipping the DComp surface every frame causes visible glitching,
+        // so we skip the work when nothing relevant changed.
+        private IntPtr _lastRgnHwnd = IntPtr.Zero;
+        private int _lastRgnW = -1;
+        private int _lastRgnH = -1;
+        private int _lastRgnDiameter = -1;
         // Mobile user agent so Spotify serves the compact mobile layout.
         private const string MobileUserAgent =
             "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36";
@@ -1137,8 +1225,27 @@ namespace spotify
             try
             {
                 var innerHwnd = TryGetWebViewHwnd();
+
+                // Skip if the region inputs are unchanged since the last apply. During a slide
+                // the HWND moves (SetWindowPos, handled in SyncWebViewHwndToVisualBounds) but
+                // its SIZE — the only thing the clip depends on — stays constant, so re-clipping
+                // every frame is pure churn that makes the WebView surface glitch.
+                if (innerHwnd != IntPtr.Zero &&
+                    innerHwnd == _lastRgnHwnd &&
+                    diameter == _lastRgnDiameter &&
+                    _visibleHwndW == _lastRgnW &&
+                    _visibleHwndH == _lastRgnH)
+                {
+                    return;
+                }
+
                 if (innerHwnd != IntPtr.Zero)
                 {
+                    _lastRgnHwnd = innerHwnd;
+                    _lastRgnDiameter = diameter;
+                    _lastRgnW = _visibleHwndW;
+                    _lastRgnH = _visibleHwndH;
+
                     // Walk up to the wrapper HWND whose parent is the TopLevel. The wrapper
                     // can paint over the inner's rounded clip if it isn't itself clipped,
                     // so apply the region to BOTH when they differ.
@@ -1248,7 +1355,7 @@ namespace spotify
             var local = _webView.Bounds;
             if (local.Width <= 0 || local.Height <= 0) return;
 
-            Console.WriteLine($"[Spotify] SyncWebViewHwndToVisualBounds: localBounds={local.Width}x{local.Height}");
+            DebugLog($"[Spotify] SyncWebViewHwndToVisualBounds: localBounds={local.Width}x{local.Height}");
 
             // TransformToVisual returns local->topLevel excluding the TopLevel's own RenderTransform.
             // Compose it after (right-multiply) so the full local→visual pipeline is correct.
@@ -1309,8 +1416,8 @@ namespace spotify
             try
             {
                 var ourHwnd = TryGetWebViewHwnd();
-                Console.WriteLine($"[Spotify] TryGetWebViewHwnd returned {ourHwnd}");
-                Console.WriteLine($"[Spotify] visualRect (shrunk)={x},{y},{w},{h} renderScaling={scaling}");
+                DebugLog($"[Spotify] TryGetWebViewHwnd returned {ourHwnd}");
+                DebugLog($"[Spotify] visualRect (shrunk)={x},{y},{w},{h} renderScaling={scaling}");
 
                 if (ourHwnd != IntPtr.Zero)
                 {
@@ -1336,7 +1443,7 @@ namespace spotify
                     if (outerHwnd != ourHwnd)
                     {
                         SetWindowPos(ourHwnd, IntPtr.Zero, 0, 0, wExt, hExt, SWP_NOZORDER | SWP_NOACTIVATE);
-                        Console.WriteLine($"[Spotify] Positioned outerHwnd={outerHwnd} innerHwnd={ourHwnd} -> x={targetX},y={y},w={wExt},h={hExt}");
+                        DebugLog($"[Spotify] Positioned outerHwnd={outerHwnd} innerHwnd={ourHwnd} -> x={targetX},y={y},w={wExt},h={hExt}");
                     }
                 }
                 else
@@ -1348,7 +1455,7 @@ namespace spotify
                         {
                             int cw = r.Right - r.Left;
                             int ch = r.Bottom - r.Top;
-                            Console.WriteLine($"[Spotify] Enumerating child HWND={child} client={cw}x{ch}");
+                            DebugLog($"[Spotify] Enumerating child HWND={child} client={cw}x{ch}");
                             if (cw > 50 && ch > 50)
                                 SetWindowPos(child, IntPtr.Zero, targetX, y, wExt, hExt,
                                     SWP_NOZORDER | SWP_NOACTIVATE);
@@ -1380,7 +1487,7 @@ namespace spotify
             }
             catch { visualScale = 1.0; }
 
-            Console.WriteLine($"[Spotify] computed visualScale={visualScale}");
+            DebugLog($"[Spotify] computed visualScale={visualScale}");
 
             ForceWebView2RepositioningWithSize(0, wExt, hExt);
 
@@ -1433,7 +1540,7 @@ namespace spotify
                  var controllerType = controller.GetType();
 
                  var rect = new System.Drawing.Rectangle(physicalOffsetX, 0, w, h);
-                Console.WriteLine($"[Spotify] ForceWebView2RepositioningWithSize rect={{X={rect.X},Y={rect.Y},W={rect.Width},H={rect.Height}}} zoom={zoom}");
+                DebugLog($"[Spotify] ForceWebView2RepositioningWithSize rect={{X={rect.X},Y={rect.Y},W={rect.Width},H={rect.Height}}} zoom={zoom}");
                  _controllerBoundsPropCache    ??= controllerType.GetProperty("Bounds");
                  _controllerBoundsPropCache?.SetValue(controller, rect);
 
