@@ -33,11 +33,11 @@ When you launch the `RunModule` project, you will see a comprehensive toolbar an
 - **✚ New:** Scaffolds a brand new module by cloning `DefaultModule` and linking it to the solution.
 - **↺ Reload:** Re-instantiates the active module via AssemblyLoadContext. Useful for testing cold-start initialization and clearing memory without restarting the editor entirely.
 - **🎨 Theme:** Opens an overlay to customize and test global theme colors dynamically.
-- **⚡ Push to Docklys:** Compiles the active module and copies its `.dll` directly into your local Docklys `CustomModules/` folder.
+- **⚡ Push to Docklys:** Compiles the active module and copies its `.dll` directly into your local Docklys `Modules/` folder.
 - **Save .webp:** Captures a transparent WebP screenshot of the active module for promotional assets.
 - **📂 .webp:** Opens the folder containing your saved screenshots.
 - **📂 .dll:** Opens the folder containing the compiled module DLLs.
-- **📂 Docklys:** Opens the local Docklys `CustomModules/` directory.
+- **📂 Modules:** Opens the local Docklys `Modules/` directory.
 - **📂 Saves:** Opens the AppData folder where modules save their custom settings.
 
 ## AppData & Saving Settings

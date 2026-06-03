@@ -112,7 +112,7 @@ public partial class MainWindow
 
     // Walk up from the running editor's BaseDirectory looking for the
     // editor solution. Mirrors the existing FindVolumeMixerProject /
-    // FindDocklyCustomModulesDir patterns.
+    // FindDocklyModulesDir patterns.
     private static string? FindEditorSolutionDir()
     {
         var dir = AppContext.BaseDirectory;
@@ -165,26 +165,32 @@ public partial class MainWindow
                     "Pick a different name.");
         }
 
-        var customModules = FindDocklyCustomModulesDirStatic();
-        if (customModules != null)
+        var modules = FindDocklyModulesDirStatic();
+        if (modules != null)
         {
-            var dllPath = Path.Combine(customModules, name + ".dll");
+            var dllPath = Path.Combine(modules, name + ".dll");
             if (File.Exists(dllPath))
                 return (false,
                     $"Dockly already has a deployed module DLL named '{name}.dll' in:\n" +
-                    $"{customModules}\n\nPick a different name, or remove the existing DLL first.");
+                    $"{modules}\n\nPick a different name, or remove the existing DLL first.");
         }
 
         return (true, null);
     }
 
-    private static string? FindDocklyCustomModulesDirStatic()
+    private static string? FindDocklyModulesDirStatic()
     {
+        // Try the standard AppData location first.
+        var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Docklys", "Modules");
+        if (Directory.Exists(appData)) return appData;
+
         var dir = AppContext.BaseDirectory;
         while (!string.IsNullOrEmpty(dir))
         {
             foreach (var rel in new[]
                      {
+                         Path.Combine("Dockly", "Modules"),
+                         Path.Combine("Dockly", "Dockly", "Modules"),
                          Path.Combine("Dockly", "CustomModules"),
                          Path.Combine("Dockly", "Dockly", "CustomModules"),
                      })
@@ -196,10 +202,6 @@ public partial class MainWindow
             if (parent == null) break;
             dir = parent.FullName;
         }
-
-        // Try the standard AppData location.
-        var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Docklys", "Modules");
-        if (Directory.Exists(appData)) return appData;
 
         return null;
     }

@@ -27,26 +27,19 @@
       <MakeDir Directories="$(OutputModuleDir)" Condition="!Exists('$(OutputModuleDir)')" />
       <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(OutputModuleDir)" />
 
-      <!-- Also deploy straight into the live Dockly app's CustomModules folders so a
+      <!-- Also deploy straight into the live Dockly app's Modules folders so a
            rebuild is immediately picked up by the editor/app. These are the paths the
-           running app actually loads from (see Dockly ModuleRegistry.ResolveModulesDirectory).
+           running app actually loads from.
            Copies are conditional so the build still succeeds on machines without the app. -->
       <PropertyGroup>
-        <DocklyAppRoot>$(MSBuildProjectDirectory)\..\..\Docklys</DocklyAppRoot>
-        <DocklyRunCustomModules>$(DocklyAppRoot)\CustomModules</DocklyRunCustomModules>
-        <DocklyDesktopCustomModules>$(DocklyAppRoot)\Dockly.Desktop\bin\Debug\net9.0\CustomModules</DocklyDesktopCustomModules>
+        <DocklyAppRoot>$(AppData)\Docklys</DocklyAppRoot>
+        <DocklyModules>$(DocklyAppRoot)\Modules</DocklyModules>
       </PropertyGroup>
-      <!-- ContinueOnError: if the Dockly app is currently RUNNING it holds VChat.dll
-           locked and these copies fail. That must NOT fail the build — the compile and
-           the OutputModuleDLL copy above already succeeded. Close the app and rebuild
-           (or just rebuild after closing) to push the fresh DLL into the app. -->
+      <!-- ContinueOnError: if the Dockly app is currently RUNNING it holds the DLL
+           locked and these copies fail. That must NOT fail the build. -->
       <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
-            DestinationFolder="$(DocklyRunCustomModules)"
-            Condition="Exists('$(DocklyRunCustomModules)')"
-            ContinueOnError="true" />
-      <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
-            DestinationFolder="$(DocklyDesktopCustomModules)"
-            Condition="Exists('$(DocklyDesktopCustomModules)')"
+            DestinationFolder="$(DocklyModules)"
+            Condition="Exists('$(DocklyModules)')"
             ContinueOnError="true" />
     </Target>
 </Project>

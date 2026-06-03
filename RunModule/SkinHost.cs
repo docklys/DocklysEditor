@@ -12,7 +12,7 @@ namespace RunModule;
 
 // Editor-side mirror of Dockly's SkinService. Locates Dockly's loose Skins/
 // folder via the same walk-up pattern RunModule already uses for
-// CustomModules, loads any *.axaml as a Styles document, and swaps the
+// Modules, loads any *.axaml as a Styles document, and swaps the
 // active one inside Application.Current.Styles so the previewed module
 // renders under the chosen skin.
 public sealed class SkinHost

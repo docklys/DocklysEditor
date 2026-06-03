@@ -32,7 +32,7 @@ DocklysModuleEditor/
 Docklys/Dockly/
 ├── Skins/Default.axaml         ← the skins your module renders under
 ├── Modules/ModuleRegistry.cs   ← the loader that finds your DLL
-├── CustomModules/              ← drop your built DLL here
+├── Modules/              ← drop your built DLL here
 └── Views/MainWindow.*.cs       ← the tile grid + profile (tab) system
 ```
 
@@ -117,8 +117,8 @@ When Dockly starts, `ModuleRegistry` scans for built-in modules and external DLL
 
 **Where to put your `.dll`:**
 1. `$DOCKLY_MODULES_PATH` (env var)
-2. Next to the executable in `CustomModules/`
-3. `%LOCALAPPDATA%/Dockly/CustomModules/`
+2. Next to the executable in `Modules/`
+3. `%APPDATA%/Docklys/Modules/`
 
 **Module Reloading:**
 There is no filesystem watcher in the main app. Dropping a DLL requires restarting Docklys. However, the Editor (`RunModule`) handles **Hot-Reload** via a custom `AssemblyLoadContext`. When you rebuild `RunModule`, it re-loads the DLLs into memory.

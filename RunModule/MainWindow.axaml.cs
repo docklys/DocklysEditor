@@ -46,7 +46,7 @@ public partial class MainWindow : Window
         {
             var zoom = this.FindControl<Slider>("ZoomSlider");
             var lbl = this.FindControl<TextBlock>("ZoomLabel");
-            if (zoom != null && lbl != null)/celar
+            if (zoom != null && lbl != null)
                 lbl.Text = $"{(int)zoom.Value}%";
         }
         catch { }
@@ -420,7 +420,7 @@ public partial class MainWindow : Window
         var button = sender as Button;
         if (button == null) return;
 
-        const string originalContent = "Push to Dockly!";
+        const string originalContent = "Push to Docklys!";
 
         // If we just deployed and Dockly is offline: launch it, then reset to original.
         if (_canStartDockly)
@@ -457,9 +457,9 @@ public partial class MainWindow : Window
                 catch (Exception startEx)
                 {
                     startError =
-                        $"Failed to launch Dockly.\n\nExe: {exe}\n\n" +
+                        $"Failed to launch Docklys.\n\nExe: {exe}\n\n" +
                         $"{startEx.GetType().Name}: {startEx.Message}\n\n{startEx.StackTrace}";
-                    Debug.WriteLine($"[Deploy] Start Dockly failed: {startEx}");
+                    Debug.WriteLine($"[Deploy] Start Docklys failed: {startEx}");
                 }
             }
             else
@@ -482,7 +482,7 @@ public partial class MainWindow : Window
             else
             {
                 // Persist the error so the user can hover to read it and click to copy + retry.
-                Fail("Start failed", startError ?? "Unknown error launching Dockly.");
+                Fail("Start failed", startError ?? "Unknown error launching Docklys.");
             }
             return;
         }
@@ -501,7 +501,7 @@ public partial class MainWindow : Window
             }
             catch (Exception killEx)
             {
-                Debug.WriteLine($"[Deploy] Kill Dockly failed: {killEx}");
+                Debug.WriteLine($"[Deploy] Kill Docklys failed: {killEx}");
             }
             // Give the OS a moment to release the file handle on the DLL.
             await Task.Delay(500);
@@ -580,11 +580,11 @@ public partial class MainWindow : Window
             // Auto-discovery → saved path → folder picker. Picker
             // remembers its choice for next time so the dev only points
             // at the Dockly install folder once.
-            var customModulesDir = await ResolveDocklyCustomModulesDirAsync(interactiveOnMiss: true);
-            if (customModulesDir == null)
+            var modulesDir = await ResolveDocklyModulesDirAsync(interactiveOnMiss: true);
+            if (modulesDir == null)
             {
                 Fail("Dockly not found",
-                    "Could not locate Dockly's CustomModules folder.\n\n" +
+                    "Could not locate Dockly's Modules folder.\n\n" +
                     $"Auto-search started from:\n{AppContext.BaseDirectory}\n\n" +
                     "Also probed running Dockly / Dockly.Desktop processes, " +
                     "and the saved install path in %APPDATA%/Docklys/RunModule.json. " +
@@ -594,81 +594,51 @@ public partial class MainWindow : Window
 
             var projDir = Path.GetDirectoryName(proj) ?? "";
 
-            var psi = new ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = $"build \"{proj}\" -c Debug -nologo -v minimal",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-                WorkingDirectory = projDir,
-            };
-
-            Process? process;
-            try { process = Process.Start(psi); }
-            catch (Exception startEx)
-            {
-                Fail("dotnet failed to start",
-                    $"Could not launch the dotnet CLI.\n\n{startEx.GetType().Name}: {startEx.Message}\n\nMake sure the .NET SDK is installed and 'dotnet' is on PATH.");
-                return;
-            }
-            if (process == null)
-            {
-                Fail("dotnet not found",
-                    "Process.Start returned null. The .NET SDK may not be installed or 'dotnet' is not on PATH.");
-                return;
-            }
-
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
-            var stdout = await stdoutTask;
-            var stderr = await stderrTask;
-
-            if (process.ExitCode != 0)
-            {
-                var details =
-                    $"dotnet build exited with code {process.ExitCode}\n" +
-                    $"Project: {proj}\n" +
-                    $"Working dir: {projDir}\n" +
-                    "\n--- stdout ---\n" +
-                    (string.IsNullOrWhiteSpace(stdout) ? "(empty)" : stdout.Trim()) +
-                    "\n\n--- stderr ---\n" +
-                    (string.IsNullOrWhiteSpace(stderr) ? "(empty)" : stderr.Trim());
-                Fail("Build failed", details);
-                return;
-            }
-
-            // Find the freshest <Folder>.dll under bin\Debug
+            // Find the freshest <Folder>.dll under OutputModuleDLL (preferred) or bin\Debug
             string? builtDll = null;
-            var binDir = Path.Combine(projDir, "bin", "Debug");
-            if (Directory.Exists(binDir))
+            var editorRoot = FindEditorSolutionDir();
+            if (editorRoot != null)
             {
-                builtDll = Directory.GetFiles(binDir, assemblyName + ".dll", SearchOption.AllDirectories)
-                                    .OrderByDescending(File.GetLastWriteTimeUtc)
-                                    .FirstOrDefault();
+                var outputDir = Path.Combine(editorRoot, "OutputModuleDLL");
+                if (Directory.Exists(outputDir))
+                {
+                    builtDll = Directory.GetFiles(outputDir, assemblyName + ".dll", SearchOption.AllDirectories)
+                                        .OrderByDescending(File.GetLastWriteTimeUtc)
+                                        .FirstOrDefault();
+                }
+            }
+            
+            // Fallback to project's bin directory if not in OutputModuleDLL
+            if (builtDll == null)
+            {
+                var binDir = Path.Combine(projDir, "bin", "Debug");
+                if (Directory.Exists(binDir))
+                {
+                    builtDll = Directory.GetFiles(binDir, assemblyName + ".dll", SearchOption.AllDirectories)
+                                        .OrderByDescending(File.GetLastWriteTimeUtc)
+                                        .FirstOrDefault();
+                }
             }
 
             if (builtDll == null || !File.Exists(builtDll))
             {
                 Fail("DLL not found",
-                    $"Build succeeded but no {assemblyName}.dll found under:\n{binDir}");
+                    $"No compiled {assemblyName}.dll found. Please build the project first.");
                 return;
             }
 
-            // Copy to EVERY Dockly CustomModules dir we can locate, not
+            // Copy to EVERY Dockly Modules dir we can locate, not
             // just one. Dockly's ModuleRegistry resolves the dir in
-            // priority order at startup (env var → BaseDirectory/CustomModules →
-            // assembly-location/CustomModules → walk-up → LocalAppData),
+            // priority order at startup (env var → BaseDirectory/Modules →
+            // assembly-location/Modules → walk-up → LocalAppData),
             // so a Dockly that's been run once and a Dockly that's never
             // been run end up reading from different folders. Copying to
             // all of them is the only reliable way to make sure the
             // module shows up regardless of state.
-            var targets = FindAllDocklyCustomModulesDirs();
-            if (!targets.Contains(customModulesDir, StringComparer.OrdinalIgnoreCase))
-                targets.Add(customModulesDir);
-            if (targets.Count == 0) targets.Add(customModulesDir);
+            var targets = FindAllDocklyModulesDirs();
+            if (!targets.Contains(modulesDir, StringComparer.OrdinalIgnoreCase))
+                targets.Add(modulesDir);
+            if (targets.Count == 0) targets.Add(modulesDir);
 
             var copied = new List<string>();
             var failures = new List<(string Dest, string Reason)>();
@@ -753,16 +723,22 @@ public partial class MainWindow : Window
         }
     }
 
-    // Auto-detect Dockly's CustomModules folder. Tries common layouts:
-    //   <root>\Dockly\CustomModules
-    //   <root>\Dockly\Dockly\CustomModules
+    // Auto-detect Dockly's Modules folder. Tries common layouts:
+    //   <root>\Dockly\Modules
+    //   <root>\Dockly\Dockly\Modules
     // Falls back to a running Dockly process's directory if nothing matches.
-    private string? FindDocklyCustomModulesDir()
+    private string? FindDocklyModulesDir()
     {
+        // Try the standard AppData location first.
+        var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Docklys", "Modules");
+        if (Directory.Exists(appData)) return appData;
+
         var dir = AppContext.BaseDirectory;
         while (dir != null)
         {
             foreach (var rel in new[] {
+                Path.Combine("Dockly", "Modules"),
+                Path.Combine("Dockly", "Dockly", "Modules"),
                 Path.Combine("Dockly", "CustomModules"),
                 Path.Combine("Dockly", "Dockly", "CustomModules"),
             })
@@ -785,21 +761,17 @@ public partial class MainWindow : Window
                 var exeDir = Path.GetDirectoryName(exe);
                 if (exeDir != null)
                 {
-                    var cm = Path.Combine(exeDir, "CustomModules");
-                    Directory.CreateDirectory(cm);
-                    return cm;
+                    var m = Path.Combine(exeDir, "Modules");
+                    Directory.CreateDirectory(m);
+                    return m;
                 }
             }
         }
         catch { }
 
-        // Try the standard AppData location.
-        var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Docklys", "Modules");
-        if (Directory.Exists(appData)) return appData;
-
         // Last sync fallback: the install dir the dev previously picked
         // via the folder picker (saved to %APPDATA%/Docklys/RunModule.json).
-        // ResolveDocklyCustomModulesDirAsync uses this too, but exposing
+        // ResolveDocklyModulesDirAsync uses this too, but exposing
         // it here lets the sync "Start Docklys" code path benefit
         // without going through the async resolver.
         var saved = SkinHost.LoadDocklyInstallDir();
@@ -859,17 +831,17 @@ public partial class MainWindow : Window
     // human-readable search report when nothing is found (used for the error tooltip).
     private (string? exePath, string? searchReport) FindDocklyExecutableWithReport()
     {
-        var customModulesDir = FindDocklyCustomModulesDir();
-        if (customModulesDir == null)
-            return (null, "Could not locate the Dockly\\CustomModules directory. Build/install Dockly so its folder is reachable from this project tree.");
+        var modulesDir = FindDocklyModulesDir();
+        if (modulesDir == null)
+            return (null, "Could not locate the Dockly\\Modules directory. Build/install Dockly so its folder is reachable from this project tree.");
 
-        var docklyDir = Path.GetDirectoryName(customModulesDir);
+        var docklyDir = Path.GetDirectoryName(modulesDir);
         if (docklyDir == null)
-            return (null, $"Could not determine Dockly root from:\n{customModulesDir}");
+            return (null, $"Could not determine Dockly root from:\n{modulesDir}");
 
         var searched = new System.Collections.Generic.List<string>();
 
-        // 1. Published / release layout: exe sits next to CustomModules.
+        // 1. Published / release layout: exe sits next to Modules.
         foreach (var name in new[] { "Dockly.Desktop.exe", "Dockly.exe" })
         {
             var path = Path.Combine(docklyDir, name);
@@ -1034,7 +1006,7 @@ public partial class MainWindow : Window
 
     private async void OpenDocklyModulesFolder_Click(object sender, RoutedEventArgs e)
     {
-        var path = await ResolveDocklyCustomModulesDirAsync(interactiveOnMiss: true);
+        var path = await ResolveDocklyModulesDirAsync(interactiveOnMiss: true);
         if (path == null) return;
         Directory.CreateDirectory(path);
         try

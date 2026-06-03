@@ -6,7 +6,7 @@ Two repos in this tree:
 - `Docklys/` — the host app (Avalonia 11.3, .NET 9, MVVM, cross-platform).
 - `DocklysModuleEditor/` — the module dev tool (`RunModule`) + module template (`DefaultModule`) + reference module (`VolumeMixer`) + shared contracts (`Docklys.ModuleContracts`).
 
-A *module* is an Avalonia `UserControl` that implements `Docklys.ModuleContracts.IModule`. Distributed as a `<Name>.dll` placed in Dockly's `CustomModules/` directory.
+A *module* is an Avalonia `UserControl` that implements `Docklys.ModuleContracts.IModule`. Distributed as a `<Name>.dll` placed in Dockly's `Modules/` directory.
 
 ---
 
@@ -52,10 +52,10 @@ Owner: `Docklys/Dockly/Modules/ModuleRegistry.cs` (static).
 
 `ResolveModulesDirectory()` checks, in order:
 1. `DOCKLY_MODULES_PATH` (env var)
-2. `AppContext.BaseDirectory + "CustomModules"`
-3. `Assembly.GetExecutingAssembly().Location + "CustomModules"`
-4. Walk-up looking for `CustomModules/`
-5. `LocalApplicationData/Dockly/CustomModules`
+2. `AppContext.BaseDirectory + "Modules"`
+3. `Assembly.GetExecutingAssembly().Location + "Modules"`
+4. Walk-up looking for `Modules/`
+5. `%APPDATA%/Docklys/Modules`
 
 **Module Reload (Hot-Reload in RunModule):**
 Handled primarily by `RunModule.ModuleLoadContext`.
@@ -134,7 +134,7 @@ Authoritative spec lives in `Docklys/CLAUDE.md`.
 
 - `MainWindow.axaml` — Horizontally-scrollable `ModuleStrip` with overlay arrow buttons.
 - `MainWindow.CreateModule.cs` — Clones `DefaultModule/`, rewrites namespaces/IDs, runs `dotnet sln add`, adds `<ProjectReference>` to `RunModule.csproj`.
-- `MainWindow.axaml.cs` — **WebP capture** targets `ActiveModule`. **Push to Docklys** copies DLL to Dockly's `CustomModules/`.
+- `MainWindow.axaml.cs` — **WebP capture** targets `ActiveModule`. **Push to Docklys** copies DLL to Dockly's `Modules/`.
 - No runtime DLL load in editor strip — uses statically-referenced ProjectReferences for type-safe XAML. Rebuild RunModule to see new modules in strip.
 
 ---
@@ -143,7 +143,7 @@ Authoritative spec lives in `Docklys/CLAUDE.md`.
 
 | Goal | File |
 |---|---|
-| Add a discoverable module | Drop `<Name>.dll` (containing an `IModule` `UserControl`) into the resolved `CustomModules/`; call `ModuleRegistry.Reload()` if host already started. |
+| Add a discoverable module | Drop `<Name>.dll` (containing an `IModule` `UserControl`) into the resolved `Modules/`; call `ModuleRegistry.Reload()` if host already started. |
 | Make modules theme-aware | Reference keys from `Docklys.ModuleContracts/SkinKeys.cs` via `{DynamicResource}`. |
 | Add a new skin | Copy `Dockly/Skins/Default.axaml` → `Dockly/Skins/<Name>.axaml`, preserve every `x:Key` from `SkinKeys`. |
 | Add a new skinnable primitive | Add key to `SkinKeys.cs`, add `ControlTheme` to **every** file in `Dockly/Skins/`. |
