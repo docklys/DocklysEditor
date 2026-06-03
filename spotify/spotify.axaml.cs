@@ -897,6 +897,64 @@ namespace spotify
 })();
 ";
 
+        // Injected to translate mouse events to touch events so Spotify's mobile UI
+        // (volume slider, etc) responds to desktop mouse drags without the CDP
+        // gray-circle touch emulator cursor.
+        private const string MouseToTouchScript = @"
+(function(){
+    if (window.__docklyTouchEmulation) return;
+    window.__docklyTouchEmulation = true;
+    if (navigator.maxTouchPoints === 0) {
+        try { Object.defineProperty(navigator, 'maxTouchPoints', { value: 1 }); } catch(e){}
+    }
+    let isMouseDown = false;
+    let touchTarget = null;
+    function dispatchTouch(type, e, target) {
+        if (!target) return;
+        const touch = new Touch({
+            identifier: 0,
+            target: target,
+            clientX: e.clientX,
+            clientY: e.clientY,
+            pageX: e.pageX,
+            pageY: e.pageY,
+            screenX: e.screenX,
+            screenY: e.screenY,
+            radiusX: 1,
+            radiusY: 1,
+            rotationAngle: 0,
+            force: 1
+        });
+        const event = new TouchEvent(type, {
+            touches: type === 'touchend' ? [] : [touch],
+            targetTouches: type === 'touchend' ? [] : [touch],
+            changedTouches: [touch],
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            view: window
+        });
+        target.dispatchEvent(event);
+    }
+    window.addEventListener('mousedown', function(e) {
+        if (e.button !== 0) return;
+        isMouseDown = true;
+        touchTarget = e.target;
+        dispatchTouch('touchstart', e, touchTarget);
+    }, true);
+    window.addEventListener('mousemove', function(e) {
+        if (!isMouseDown) return;
+        dispatchTouch('touchmove', e, touchTarget);
+    }, true);
+    window.addEventListener('mouseup', function(e) {
+        if (!isMouseDown) return;
+        dispatchTouch('touchend', e, touchTarget);
+        isMouseDown = false;
+        touchTarget = null;
+    }, true);
+})();
+";
+
         // SPOTIFY-ONLY: suppress Spotify's 'You are listening on <device>' handoff modal (green
         // Continue button + 'Listen on This Phone' on a white rounded card over a darkened,
         // click-blocking backdrop). Rather than clicking it, detect it by text (role=dialog, or a
@@ -1092,6 +1150,7 @@ namespace spotify
                                     new[] { typeof(string) });
                                 addScript?.Invoke(core, new object[] { persistentScript });
                                 addScript?.Invoke(core, new object[] { ScaleToFitScript });
+                                addScript?.Invoke(core, new object[] { MouseToTouchScript });
                                 addScript?.Invoke(core, new object[] { SuppressDeviceModalScript });
 
                                 // Navigate with the new UA.
@@ -1127,6 +1186,7 @@ namespace spotify
                     var execScript = coreType.GetMethod("ExecuteScriptAsync", new[] { typeof(string) });
                     execScript?.Invoke(core, new object[] { liveScript });
                     execScript?.Invoke(core, new object[] { ScaleToFitScript });
+                    execScript?.Invoke(core, new object[] { MouseToTouchScript });
                 }
                 catch { }
 
@@ -1136,35 +1196,11 @@ namespace spotify
         }
 
         // Issue the Chromium DevTools Protocol commands that make WebView2 translate desktop
-        // mouse input into touch events. Without this, Spotify's mobile React UI (selected via
-        // the mobile UA) only listens for touch events, so the volume and track-position
-        // sliders ignore mouse clicks/drags entirely. setEmitTouchEventsForMouse repackages the
-        // pointer as a single finger; setTouchEmulationEnabled advertises a touchscreen
-        // (maxTouchPoints=1) so the page commits to its touch code paths. Called via reflection
-        // because CoreWebView2 is only reachable reflectively here; guarded so it runs once.
+        // mouse input into touch events. Disabled to hide the gray cursor circle;
+        // interaction is now handled via MouseToTouchScript in the DOM.
         private void TryEnableTouchEmulation(object core, Type coreType)
         {
-            if (_touchEmulationApplied) return;
-            try
-            {
-                var cdp = coreType.GetMethod("CallDevToolsProtocolMethodAsync",
-                    new[] { typeof(string), typeof(string) });
-                if (cdp == null) return;
-
-                cdp.Invoke(core, new object[]
-                {
-                    "Emulation.setEmitTouchEventsForMouse",
-                    "{\"enabled\":true,\"configuration\":\"mobile\"}"
-                });
-                cdp.Invoke(core, new object[]
-                {
-                    "Emulation.setTouchEmulationEnabled",
-                    "{\"enabled\":true,\"maxTouchPoints\":1}"
-                });
-
-                _touchEmulationApplied = true;
-            }
-            catch { }
+            _touchEmulationApplied = true;
         }
 
         private void StartZoomRetry(double zoomVal, int w, int h)

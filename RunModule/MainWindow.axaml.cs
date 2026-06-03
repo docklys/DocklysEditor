@@ -46,7 +46,7 @@ public partial class MainWindow : Window
         {
             var zoom = this.FindControl<Slider>("ZoomSlider");
             var lbl = this.FindControl<TextBlock>("ZoomLabel");
-            if (zoom != null && lbl != null)
+            if (zoom != null && lbl != null)/celar
                 lbl.Text = $"{(int)zoom.Value}%";
         }
         catch { }
