@@ -105,6 +105,14 @@
             <Setter Property="BorderBrush" Value="#888888" />
         </Style>
 
+        <!-- White vector icons (folder / bolt) — flat monochrome, never color emoji. -->
+        <Style Selector="Button.toolbar Path.wicon">
+            <Setter Property="Width" Value="14" />
+            <Setter Property="Height" Value="14" />
+            <Setter Property="Stretch" Value="Uniform" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
         <!-- Hold-to-charge delete widget. -->
         <Style Selector="Border.delete-btn">
             <Setter Property="Height" Value="26" />
@@ -229,21 +237,33 @@
                 <Button Grid.Column="2"
                         Name="DeployButton"
                         Classes="toolbar primary"
-                        Content="⚡ Push to Docklys"
                         Click="OnDeployClick"
                         ToolTip.ShowDelay="200"
-                        ToolTip.Tip="Build the active pattern and copy it into Docklys"/>
+                        ToolTip.Tip="Build the active pattern and copy it into Docklys">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Path Classes="wicon" Fill="White" Data="M9,1.5 L3.5,9 H7.2 L6.5,14.5 L12.5,6.5 H8.5 Z" />
+                        <TextBlock Text="Push to Docklys" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
 
                 <!-- Artifacts -->
                 <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Button Classes="toolbar"
-                            Content="📂 Pattern"
                             Click="OnOpenPatternFolderClick"
-                            ToolTip.Tip="Open the Docklys Pattern folder (%APPDATA%\Docklys\Pattern)"/>
+                            ToolTip.Tip="Open the Docklys Pattern folder (%APPDATA%\Docklys\Pattern)">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="wicon" Fill="White" Data="M1.5,3.5 H6 L7.5,5.5 H14.5 V13 H1.5 Z" />
+                            <TextBlock Text="Pattern" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                     <Button Classes="toolbar"
-                            Content="📂 Output"
                             Click="OnOpenOutputFolderClick"
-                            ToolTip.Tip="Open the OutputPatternDLL folder"/>
+                            ToolTip.Tip="Open the OutputPatternDLL folder">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="wicon" Fill="White" Data="M1.5,3.5 H6 L7.5,5.5 H14.5 V13 H1.5 Z" />
+                            <TextBlock Text="Output" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>
