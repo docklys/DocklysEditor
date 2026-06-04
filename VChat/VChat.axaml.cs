@@ -163,44 +163,14 @@ namespace VChat
                                 Console.WriteLine("[VChat] SetTileSize: webView is hidden, skipping relayout sync to prevent engine crash.");
                             }
 
-                            // Immediate brute-force fallback: enumerate top-level child HWNDs
-                            // and set their bounds to our target rect. This will forcibly
-                            // resize any native child (including WebView instances) even if
-                            // the controller hasn't been exposed via reflection yet.
-                            try
-                            {
-                                var top = TopLevel.GetTopLevel(this);
-                                var parentHwnd = top?.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
-                                if (parentHwnd != IntPtr.Zero)
-                                {
-                                    var transform = (_webView ?? (Control)this).TransformToVisual(top);
-                                    var local = (_webView ?? (Control)this).Bounds;
-                                    var composed = transform.HasValue ? transform.Value : Matrix.Identity;
-                                    if (top.RenderTransform != null) composed = composed * top.RenderTransform.Value;
-                                    var vr = new Rect(0,0, local.Width, local.Height).TransformToAABB(composed);
-                                    var scaling = top.RenderScaling;
-                                    double pad = WebViewPadding * scaling;
-                                    int tx = (int)(vr.X * scaling + pad);
-                                    int ty = (int)(vr.Y * scaling + pad);
-                                    int tw = Math.Max(1, (int)(vr.Width * scaling - pad * 2));
-                                    int th = Math.Max(1, (int)(vr.Height * scaling - pad * 2));
-                                    Console.WriteLine($"[VChat] Brute-force SetTileSize fallback: enumerating children of parentHwnd={parentHwnd} -> target {tx}x{ty}+{tw}x{th}");
-                                    IntPtr child = FindWindowEx(parentHwnd, IntPtr.Zero, null, null);
-                                    while (child != IntPtr.Zero)
-                                    {
-                                        try
-                                        {
-                                            SetWindowPos(child, IntPtr.Zero, tx, ty, tw, th, SWP_NOZORDER | SWP_NOACTIVATE);
-                                        }
-                                        catch { }
-                                        child = FindWindowEx(parentHwnd, child, null, null);
-                                    }
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine($"[VChat] Brute-force SetTileSize fallback failed: {ex.Message}");
-                            }
+                            // NOTE: a brute-force "enumerate every child HWND of the window and
+                            // SetWindowPos them all to our rect" fallback used to live here. That
+                            // is unsafe when the window hosts more than one WebView (e.g. the
+                            // settings window: marketplace WebView + each preview-tile module) —
+                            // it flings foreign webviews into this module's bounds. SyncWebView-
+                            // HwndToVisualBounds already positions our own HWND once the controller
+                            // resolves it (TryGetWebViewHwnd), and the continuous sync retries until
+                            // then, so no brute-force is needed.
                          }
                      }
                      catch { }
@@ -1380,16 +1350,10 @@ namespace VChat
                     ApplyRoundedRgn(outerHwnd, diameter, _visibleHwndW, _visibleHwndH);
                     if (outerHwnd != innerHwnd) ApplyRoundedRgn(innerHwnd, diameter, _visibleHwndW, _visibleHwndH);
                 }
-                else
-                {
-                    // Fallback when HWND isn't known yet.
-                    IntPtr child = FindWindowEx(parentHwnd, IntPtr.Zero, null, null);
-                    while (child != IntPtr.Zero)
-                    {
-                        ApplyRoundedRgn(child, diameter, _visibleHwndW, _visibleHwndH);
-                        child = FindWindowEx(parentHwnd, child, null, null);
-                    }
-                }
+                // else: HWND not known yet — do NOT clip foreign child windows. Applying a
+                // rounded region to every child would clip the settings window's marketplace
+                // WebView (and sibling preview modules) to our tiny size, blanking them. Wait
+                // until TryGetWebViewHwnd resolves our own HWND; the sync re-runs each tick.
             }
             catch (Exception ex)
             {
@@ -1563,23 +1527,11 @@ namespace VChat
                     if (outerHwnd != ourHwnd)
                         SetWindowPos(ourHwnd, IntPtr.Zero, 0, 0, wExt, hExt, SWP_NOZORDER | SWP_NOACTIVATE);
                 }
-                else
-                {
-                    // HWND not discovered yet — keep trying each tick.
-                    IntPtr child = FindWindowEx(parentHwnd, IntPtr.Zero, null, null);
-                    while (child != IntPtr.Zero)
-                    {
-                        if (GetClientRect(child, out RECT r))
-                        {
-                            int cw = r.Right - r.Left;
-                            int ch = r.Bottom - r.Top;
-                            if (cw > 50 && ch > 50)
-                                SetWindowPos(child, IntPtr.Zero, targetX, y, wExt, hExt,
-                                    SWP_NOZORDER | SWP_NOACTIVATE);
-                        }
-                        child = FindWindowEx(parentHwnd, child, null, null);
-                    }
-                }
+                // else: our HWND isn't discovered yet. We must NOT move foreign child windows
+                // (the old fallback moved every >50px child, which displaces the settings
+                // window's marketplace WebView and sibling preview modules). Do nothing — the
+                // continuous sync re-runs each tick and positions us once TryGetWebViewHwnd
+                // resolves our own HWND via the CoreWebView2 controller.
             }
             catch (Exception ex)
             {

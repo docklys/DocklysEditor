@@ -1,0 +1,296 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="776" d:DesignHeight="338"
+        x:Class="RunPattern.MainWindow"
+        Title="RunPattern"
+        Width="776"
+        Height="338"
+        MinWidth="450"
+        MinHeight="225"
+        SizeToContent="Manual"
+        WindowStartupLocation="CenterScreen"
+        RequestedThemeVariant="Dark"
+        Background="#1A1A1A"
+        Foreground="White">
+    <Window.Resources>
+        <!-- Monochrome line-art icons (RunModule aesthetic) instead of color emoji. -->
+        <StreamGeometry x:Key="IconPlus">M8,3 V13 M3,8 H13</StreamGeometry>
+        <StreamGeometry x:Key="IconReload">M13,8 A5,5 0 1 1 8,3 M8,3 L5.6,2.1 M8,3 L7.4,5.3</StreamGeometry>
+        <StreamGeometry x:Key="IconUpload">M8,2.5 L8,10 M4.8,5.7 L8,2.5 L11.2,5.7 M3,12.5 H13</StreamGeometry>
+        <StreamGeometry x:Key="IconFolder">M2,5 H6 L7.5,7 H14 V13 H2 Z</StreamGeometry>
+        <StreamGeometry x:Key="IconRename">M3,13 L3,10.5 L10.5,3 L13,5.5 L5.5,13 Z M9,4.5 L11.5,7</StreamGeometry>
+    </Window.Resources>
+    <Window.Styles>
+        <!-- Section dividers between top toolbar / preview / bottom toolbar. -->
+        <Style Selector="Border.toolbar-bar">
+            <Setter Property="Background" Value="#202020" />
+            <Setter Property="BorderBrush" Value="#2F2F2F" />
+        </Style>
+
+        <!-- Carousel arrow buttons: chrome-free, just clean white chevrons. -->
+        <Style Selector="Button.scroll-arrow">
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="56" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.scroll-arrow /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.scroll-arrow:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.scroll-arrow:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.scroll-arrow Path">
+            <Setter Property="Stroke" Value="White" />
+            <Setter Property="StrokeThickness" Value="2.5" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+        </Style>
+        <Style Selector="Button.scroll-arrow:pointerover Path">
+            <Setter Property="StrokeThickness" Value="3.5" />
+        </Style>
+
+        <!-- Dev toolbar buttons share a compact monochrome look. -->
+        <Style Selector="Button.toolbar">
+            <Setter Property="Height" Value="26" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="10,2" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#2A2A2A" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.toolbar /template/ ContentPresenter">
+            <Setter Property="Background" Value="#2A2A2A" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+        </Style>
+        <Style Selector="Button.toolbar:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#3D3D3D" />
+            <Setter Property="BorderBrush" Value="#777777" />
+            <Setter Property="TextElement.Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.toolbar:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#1A1A1A" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="TextElement.Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.toolbar:disabled /template/ ContentPresenter">
+            <Setter Property="Background" Value="#222222" />
+            <Setter Property="BorderBrush" Value="#3A3A3A" />
+            <Setter Property="TextElement.Foreground" Value="#666666" />
+        </Style>
+
+        <!-- Monochrome icon glyphs inside toolbar buttons. -->
+        <Style Selector="Button.toolbar Path.btn-icon">
+            <Setter Property="Width" Value="14" />
+            <Setter Property="Height" Value="14" />
+            <Setter Property="Stretch" Value="Uniform" />
+            <Setter Property="Stroke" Value="White" />
+            <Setter Property="StrokeThickness" Value="1.5" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.toolbar:disabled Path.btn-icon">
+            <Setter Property="Stroke" Value="#666666" />
+        </Style>
+
+        <!-- The "primary" call-to-action: the deploy button. -->
+        <Style Selector="Button.toolbar.primary /template/ ContentPresenter">
+            <Setter Property="Background" Value="#4A4A4A" />
+            <Setter Property="BorderBrush" Value="#888888" />
+        </Style>
+        <Style Selector="Button.toolbar.primary:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#5C5C5C" />
+            <Setter Property="BorderBrush" Value="#AAAAAA" />
+        </Style>
+        <Style Selector="Button.toolbar.primary:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#383838" />
+            <Setter Property="BorderBrush" Value="#888888" />
+        </Style>
+
+        <!-- Hold-to-charge delete widget. -->
+        <Style Selector="Border.delete-btn">
+            <Setter Property="Height" Value="26" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Background" Value="#3A3A3A" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto, *, Auto">
+
+        <!-- ═════════ Top bar: identity | rename | delete ═════════ -->
+        <Border Grid.Row="0"
+                Classes="toolbar-bar"
+                BorderThickness="0,0,0,1"
+                Padding="10,6">
+            <Grid ColumnDefinitions="Auto, *, Auto">
+
+                <!-- Active pattern identity + per-pattern actions -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Name="PatternNameLabel"
+                               Text="(no pattern)"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               Foreground="White"
+                               VerticalAlignment="Center"
+                               MinWidth="80"/>
+                    <Button Name="RenameButton"
+                            Classes="toolbar"
+                            Click="RenamePattern_Click"
+                            ToolTip.Tip="Rename the currently displayed pattern">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="btn-icon" Data="{StaticResource IconRename}" />
+                            <TextBlock Text="Rename" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Hold-to-charge delete (Border, not Button — we drive
+                         PointerPressed / Released ourselves). -->
+                    <Border Name="DeleteButton"
+                            Classes="delete-btn"
+                            Width="130"
+                            PointerPressed="DeleteButton_PointerPressed"
+                            PointerReleased="DeleteButton_PointerReleased"
+                            PointerCaptureLost="DeleteButton_PointerCaptureLost"
+                            ToolTip.Tip="Press and HOLD to charge a deletion, then enter 1234 to confirm">
+                        <Grid ClipToBounds="True">
+                            <Border Name="DeleteChargeFill"
+                                    HorizontalAlignment="Left"
+                                    Background="#888888"
+                                    Width="0" />
+                            <TextBlock Name="DeleteButtonLabel"
+                                       Text="✕ Hold to delete"
+                                       FontSize="11"
+                                       Foreground="White"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <!-- Center / right: reserved -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <!-- ═════════ Pattern preview: live surface + cycle arrows ═════════ -->
+        <Grid Name="PreviewGrid" Grid.Row="1" ClipToBounds="False">
+            <!-- Live preview: pointer over this surface drives mouse-reactive patterns. -->
+            <Border Name="PreviewBorder"
+                    CornerRadius="3"
+                    ClipToBounds="True"
+                    BorderBrush="#2F2F2F"
+                    BorderThickness="1"
+                    Background="#0E1012">
+                <ContentControl Name="PreviewSlot"
+                                HorizontalContentAlignment="Stretch"
+                                VerticalContentAlignment="Stretch" />
+            </Border>
+
+            <Button Name="ScrollLeftButton"
+                    Classes="scroll-arrow"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Center"
+                    Margin="10,0,0,0"
+                    Click="OnPrevClick"
+                    ToolTip.Tip="Previous pattern">
+                <Path Data="M 12 0 L 0 16 L 12 32" />
+            </Button>
+            <Button Name="ScrollRightButton"
+                    Classes="scroll-arrow"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Margin="0,0,10,0"
+                    Click="OnNextClick"
+                    ToolTip.Tip="Next pattern">
+                <Path Data="M 0 0 L 12 16 L 0 32" />
+            </Button>
+        </Grid>
+
+        <!-- ═════════ Bottom bar: reload | deploy | new + artifacts ═════════ -->
+        <Border Grid.Row="2"
+                Classes="toolbar-bar"
+                BorderThickness="0,1,0,0"
+                Padding="10,6">
+            <Grid ColumnDefinitions="Auto, *, Auto, *, Auto">
+
+                <!-- Lifecycle -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Name="ReloadButton"
+                            Classes="toolbar"
+                            Click="OnReloadClick"
+                            ToolTip.Tip="Rescan the Patterns folder and re-instantiate the active pattern">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="btn-icon" Data="{StaticResource IconReload}" />
+                            <TextBlock Text="Reload" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <!-- Deploy (center, primary styling) -->
+                <Button Grid.Column="2"
+                        Name="DeployButton"
+                        Classes="toolbar primary"
+                        Click="OnDeployClick"
+                        ToolTip.ShowDelay="200"
+                        ToolTip.Tip="Build the active pattern and copy it into Docklys">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Path Classes="btn-icon" Data="{StaticResource IconUpload}" />
+                        <TextBlock Text="Push to Docklys" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+                <!-- New + artifacts -->
+                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Name="NewButton"
+                            Classes="toolbar"
+                            Click="OnNewClick"
+                            ToolTip.Tip="Scaffold a new pattern from a template">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="btn-icon" Data="{StaticResource IconPlus}" />
+                            <TextBlock Text="New" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="toolbar"
+                            Click="OnOpenPatternFolderClick"
+                            ToolTip.Tip="Open the Docklys Pattern folder (%APPDATA%\Docklys\Pattern)">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="btn-icon" Data="{StaticResource IconFolder}" />
+                            <TextBlock Text="Pattern" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="toolbar"
+                            Click="OnOpenOutputFolderClick"
+                            ToolTip.Tip="Open the OutputPatternDLL folder">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="btn-icon" Data="{StaticResource IconFolder}" />
+                            <TextBlock Text="Output" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

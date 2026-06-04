@@ -47,6 +47,7 @@ public partial class MainWindow : Window
             InitializeMainAppSizeSnaps();
             var zoom = this.FindControl<Slider>("ZoomSlider");
             if (zoom != null)
+                
                 UpdateZoomLabel(zoom.Value, null);
         }
         catch { }

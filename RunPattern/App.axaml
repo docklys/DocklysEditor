@@ -1,0 +1,17 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="RunPattern.App"
+             RequestedThemeVariant="Dark">
+    <Application.Resources>
+        <!-- Skin-ish tokens handed to previewed patterns via PatternContext. -->
+        <Color x:Key="ColorColorBackground">#2A2D31</Color>
+        <Color x:Key="ColorColor2Background">#1A1C1F</Color>
+        <Color x:Key="ColorColor3Background">#FFFFFF</Color>
+        <Color x:Key="ColorAccent">#4F9CF9</Color>
+        <SolidColorBrush x:Key="ColorFont" Color="#EDEDED" />
+        <SolidColorBrush x:Key="ColorAccentBrush" Color="#4F9CF9" />
+    </Application.Resources>
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+</Application>
