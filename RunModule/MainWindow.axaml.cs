@@ -44,10 +44,10 @@ public partial class MainWindow : Window
         // has loaded and the slot has its first module to scale.
         try
         {
+            InitializeMainAppSizeSnaps();
             var zoom = this.FindControl<Slider>("ZoomSlider");
-            var lbl = this.FindControl<TextBlock>("ZoomLabel");
-            if (zoom != null && lbl != null)
-                lbl.Text = $"{(int)zoom.Value}%";
+            if (zoom != null)
+                UpdateZoomLabel(zoom.Value, null);
         }
         catch { }
 
@@ -300,22 +300,6 @@ public partial class MainWindow : Window
         }
 
         // (capture and save logic handled above; nothing further required here)
-    }
-
-    private void ZoomSlider_ValueChanged(object? sender, RangeBaseValueChangedEventArgs e)
-    {
-        try
-        {
-            var lbl = this.FindControl<TextBlock>("ZoomLabel");
-            if (lbl != null)
-                lbl.Text = $"{(int)e.NewValue}%";
-
-            ApplyZoomToActiveModule(e.NewValue);
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Zoom change failed: {ex}");
-        }
     }
 
     // Re-apply zoom to all visible module slots. Called by ShowModuleAtIndex
