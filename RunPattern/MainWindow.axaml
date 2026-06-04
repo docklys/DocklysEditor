@@ -15,12 +15,6 @@
         Background="#1A1A1A"
         Foreground="White">
     <Window.Resources>
-        <!-- Monochrome line-art icons (RunModule aesthetic) instead of color emoji. -->
-        <StreamGeometry x:Key="IconPlus">M8,3 V13 M3,8 H13</StreamGeometry>
-        <StreamGeometry x:Key="IconReload">M13,8 A5,5 0 1 1 8,3 M8,3 L5.6,2.1 M8,3 L7.4,5.3</StreamGeometry>
-        <StreamGeometry x:Key="IconUpload">M8,2.5 L8,10 M4.8,5.7 L8,2.5 L11.2,5.7 M3,12.5 H13</StreamGeometry>
-        <StreamGeometry x:Key="IconFolder">M2,5 H6 L7.5,7 H14 V13 H2 Z</StreamGeometry>
-        <StreamGeometry x:Key="IconRename">M3,13 L3,10.5 L10.5,3 L13,5.5 L5.5,13 Z M9,4.5 L11.5,7</StreamGeometry>
     </Window.Resources>
     <Window.Styles>
         <!-- Section dividers between top toolbar / preview / bottom toolbar. -->
@@ -97,21 +91,6 @@
             <Setter Property="TextElement.Foreground" Value="#666666" />
         </Style>
 
-        <!-- Monochrome icon glyphs inside toolbar buttons. -->
-        <Style Selector="Button.toolbar Path.btn-icon">
-            <Setter Property="Width" Value="14" />
-            <Setter Property="Height" Value="14" />
-            <Setter Property="Stretch" Value="Uniform" />
-            <Setter Property="Stroke" Value="White" />
-            <Setter Property="StrokeThickness" Value="1.5" />
-            <Setter Property="StrokeLineCap" Value="Round" />
-            <Setter Property="StrokeJoin" Value="Round" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-        </Style>
-        <Style Selector="Button.toolbar:disabled Path.btn-icon">
-            <Setter Property="Stroke" Value="#666666" />
-        </Style>
-
         <!-- The "primary" call-to-action: the deploy button. -->
         <Style Selector="Button.toolbar.primary /template/ ContentPresenter">
             <Setter Property="Background" Value="#4A4A4A" />
@@ -158,13 +137,9 @@
                                MinWidth="80"/>
                     <Button Name="RenameButton"
                             Classes="toolbar"
+                            Content="✎ Rename"
                             Click="RenamePattern_Click"
-                            ToolTip.Tip="Rename the currently displayed pattern">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Path Classes="btn-icon" Data="{StaticResource IconRename}" />
-                            <TextBlock Text="Rename" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
+                            ToolTip.Tip="Rename the currently displayed pattern" />
 
                     <!-- Hold-to-charge delete (Border, not Button — we drive
                          PointerPressed / Released ourselves). -->
@@ -236,59 +211,39 @@
                 Padding="10,6">
             <Grid ColumnDefinitions="Auto, *, Auto, *, Auto">
 
-                <!-- Lifecycle -->
+                <!-- Lifecycle — New on the farthest left, then Reload -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Name="NewButton"
+                            Classes="toolbar"
+                            Content="✚ New"
+                            Click="OnNewClick"
+                            ToolTip.Tip="Scaffold a new pattern from a template"/>
                     <Button Name="ReloadButton"
                             Classes="toolbar"
+                            Content="↺ Reload"
                             Click="OnReloadClick"
-                            ToolTip.Tip="Rescan the Patterns folder and re-instantiate the active pattern">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Path Classes="btn-icon" Data="{StaticResource IconReload}" />
-                            <TextBlock Text="Reload" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
+                            ToolTip.Tip="Rescan the Patterns folder and re-instantiate the active pattern"/>
                 </StackPanel>
 
                 <!-- Deploy (center, primary styling) -->
                 <Button Grid.Column="2"
                         Name="DeployButton"
                         Classes="toolbar primary"
+                        Content="⚡ Push to Docklys"
                         Click="OnDeployClick"
                         ToolTip.ShowDelay="200"
-                        ToolTip.Tip="Build the active pattern and copy it into Docklys">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Path Classes="btn-icon" Data="{StaticResource IconUpload}" />
-                        <TextBlock Text="Push to Docklys" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Button>
+                        ToolTip.Tip="Build the active pattern and copy it into Docklys"/>
 
-                <!-- New + artifacts -->
+                <!-- Artifacts -->
                 <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <Button Name="NewButton"
-                            Classes="toolbar"
-                            Click="OnNewClick"
-                            ToolTip.Tip="Scaffold a new pattern from a template">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Path Classes="btn-icon" Data="{StaticResource IconPlus}" />
-                            <TextBlock Text="New" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
                     <Button Classes="toolbar"
+                            Content="📂 Pattern"
                             Click="OnOpenPatternFolderClick"
-                            ToolTip.Tip="Open the Docklys Pattern folder (%APPDATA%\Docklys\Pattern)">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Path Classes="btn-icon" Data="{StaticResource IconFolder}" />
-                            <TextBlock Text="Pattern" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
+                            ToolTip.Tip="Open the Docklys Pattern folder (%APPDATA%\Docklys\Pattern)"/>
                     <Button Classes="toolbar"
+                            Content="📂 Output"
                             Click="OnOpenOutputFolderClick"
-                            ToolTip.Tip="Open the OutputPatternDLL folder">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <Path Classes="btn-icon" Data="{StaticResource IconFolder}" />
-                            <TextBlock Text="Output" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Button>
+                            ToolTip.Tip="Open the OutputPatternDLL folder"/>
                 </StackPanel>
             </Grid>
         </Border>
