@@ -123,6 +123,24 @@
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
+
+        <!-- Overrides from Docklys SettingsWindow for Semi.Avalonia Slider -->
+        <Style Selector="Slider /template/ Thumb">
+            <Setter Property="Background" Value="{DynamicResource ColorAccent}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ColorAccent}"/>
+        </Style>
+        <Style Selector="Slider /template/ Thumb:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ColorAccent}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ColorAccent}"/>
+        </Style>
+        <Style Selector="Slider:pointerover /template/ Thumb">
+            <Setter Property="Background" Value="{DynamicResource ColorAccent}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ColorAccent}"/>
+        </Style>
+        <Style Selector="Slider:pressed /template/ Thumb">
+            <Setter Property="Background" Value="{DynamicResource ColorAccent}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ColorAccent}"/>
+        </Style>
     </Window.Styles>
 
     <Grid RowDefinitions="Auto, *, Auto">
@@ -182,11 +200,7 @@
         <Grid Name="PreviewGrid" Grid.Row="1" ClipToBounds="False">
             <!-- Live preview: hosts the active plugin's CreateSettingsView output. -->
             <Border Name="PreviewBorder"
-                    CornerRadius="3"
-                    ClipToBounds="True"
-                    BorderBrush="#2F2F2F"
-                    BorderThickness="1"
-                    Background="#0E1012">
+                    Background="Transparent">
                 <ContentControl Name="PreviewSlot"
                                 HorizontalContentAlignment="Stretch"
                                 VerticalContentAlignment="Stretch" />

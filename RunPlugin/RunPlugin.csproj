@@ -10,14 +10,15 @@
     <ItemGroup>
         <PackageReference Include="Avalonia" Version="11.3.1" />
         <PackageReference Include="Avalonia.Desktop" Version="11.3.1" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.0" />
         <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.0" />
+        <PackageReference Include="Semi.Avalonia" Version="11.2.1.8" />
+        <PackageReference Include="Semi.Avalonia.ColorPicker" Version="11.2.1.8" />
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj" />
-        <!-- Reference the bundled plugin template so building RunPlugin builds it
-             too; the catalog then discovers it on disk under ..\Plugins. -->
-        <ProjectReference Include="..\Plugins\Greeter\Greeter.csproj" />
+        <!-- Bundled plugin so building RunPlugin builds it too; the catalog then
+             discovers it (and any other authored plugins) on disk under ..\Plugins. -->
+        <ProjectReference Include="..\Plugins\GoogleCalendar\GoogleCalendar.csproj" />
     </ItemGroup>
 </Project>

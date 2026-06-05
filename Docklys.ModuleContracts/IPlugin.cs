@@ -38,6 +38,9 @@ public sealed class PluginContext
     public Color Color3 { get; set; } = Colors.White;
     // ColorAccent
     public Color Accent { get; set; } = Colors.DodgerBlue;
+    // ColorFont — the host's main text color. Plugins should use this for labels
+    // and text so the Plugins page matches the rest of Settings.
+    public Color Font { get; set; } = Colors.White;
 
     // Per-plugin persistent settings. The host backs these with a small JSON file
     // at %AppData%/Docklys/Plugin/<UniquePluginId>.settings.json. GetSetting

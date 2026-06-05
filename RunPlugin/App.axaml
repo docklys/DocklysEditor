@@ -10,8 +10,11 @@
         <Color x:Key="ColorAccent">#4F9CF9</Color>
         <SolidColorBrush x:Key="ColorFont" Color="#EDEDED" />
         <SolidColorBrush x:Key="ColorAccentBrush" Color="#4F9CF9" />
+        <SolidColorBrush x:Key="ColorModuleBackground" Color="#1F1F1F" />
+        <SolidColorBrush x:Key="ColorModuleBorder" Color="#2F2F2F" />
     </Application.Resources>
     <Application.Styles>
-        <FluentTheme />
+        <StyleInclude Source="avares://Semi.Avalonia/Index.axaml" />
+        <StyleInclude Source="avares://Semi.Avalonia.ColorPicker/Index.axaml" />
     </Application.Styles>
 </Application>

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Docklys.ModuleContracts;
@@ -10,6 +11,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace RunPlugin;
@@ -33,12 +35,64 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        
+        LoadDocklysColors();
 
         Loaded += (_, _) =>
         {
             LoadCatalog();
             ShowPluginAtIndex(_currentIndex);
         };
+    }
+    
+    private static void LoadDocklysColors()
+    {
+        try
+        {
+            var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Docklys", "colors.json");
+            if (File.Exists(path))
+            {
+                var json = File.ReadAllText(path);
+                var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                
+                var app = Application.Current;
+                if (app?.Resources == null) return;
+                
+                void Map(string key)
+                {
+                    if (root.TryGetProperty(key, out var prop) && prop.ValueKind == JsonValueKind.String)
+                    {
+                        var hex = prop.GetString();
+                        if (!string.IsNullOrWhiteSpace(hex) && Color.TryParse(hex, out var c))
+                        {
+                            app.Resources[key] = new SolidColorBrush(c);
+                            // Also map the exact keys SettingsWindow uses
+                            if (key.StartsWith("Color") && !key.StartsWith("ColorColor"))
+                            {
+                                app.Resources["Color" + key] = c;
+                            }
+                        }
+                    }
+                }
+                
+                Map("ColorBackground");
+                Map("Color2Background");
+                Map("Color3Background");
+                Map("ColorModuleBackground");
+                Map("ColorModuleBorder");
+                Map("ColorFont");
+                Map("ColorAccent");
+                Map("ColorWindowBorder");
+                Map("ColorModuleAccentColor");
+                Map("ColorModuleColor");
+                Map("ColorModuleFont");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to load docklys colors: {ex.Message}");
+        }
     }
 
     // ── Catalog ───────────────────────────────────────────────────────────────
@@ -108,7 +162,12 @@ public partial class MainWindow : Window
 
             slot.Content = new ScrollViewer
             {
-                Content = new Border { Padding = new Thickness(18), Child = view },
+                Content = new Border 
+                { 
+                    Padding = new Thickness(16, 32), 
+                    Child = BuildPreviewCard(plugin, view),
+                    HorizontalAlignment = HorizontalAlignment.Center
+                },
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             };
@@ -127,7 +186,14 @@ public partial class MainWindow : Window
     {
         var res = Application.Current?.Resources;
         Color C(string key, Color fb)
-            => res != null && res.TryGetValue(key, out var v) && v is Color c ? c : fb;
+        {
+            if (res != null && res.TryGetValue(key, out var v))
+            {
+                if (v is Color c) return c;
+                if (v is SolidColorBrush b) return b.Color;
+            }
+            return fb;
+        }
 
         var bag = PreviewSettingsBag.For(pluginId);
         return new PluginContext
@@ -136,8 +202,98 @@ public partial class MainWindow : Window
             Color2 = C("ColorColor2Background", Color.Parse("#1A1C1F")),
             Color3 = C("ColorColor3Background", Colors.White),
             Accent = C("ColorAccent", Color.Parse("#4F9CF9")),
+            Font = C("ColorFont", Color.Parse("#EDEDED")),
             GetSetting = bag.Get,
             SetSetting = bag.Set,
+        };
+    }
+
+    private static IBrush ResolveBrush(string key, IBrush fallback)
+    {
+        var res = Application.Current?.Resources;
+        if (res != null && res.TryGetValue(key, out var v))
+        {
+            if (v is IBrush b) return b;
+            if (v is Color c) return new SolidColorBrush(c);
+        }
+        return fallback;
+    }
+
+    // Wraps the plugin's settings view in the same card the app renders in
+    // Settings ▸ Plugins: outer border → title row → description → divider → view.
+    private static Control BuildPreviewCard(IPlugin plugin, Control view)
+    {
+        var font = ResolveBrush("ColorFont", Brushes.White);
+        var accent = ResolveBrush("ColorAccent", Brushes.SteelBlue);
+        var bg = ResolveBrush("ColorModuleBackground", Brushes.DimGray);
+        var border = ResolveBrush("ColorModuleBorder", Brushes.Gray);
+
+        var titleRow = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        titleRow.Children.Add(new TextBlock
+        {
+            Text = plugin.PluginName,
+            FontSize = 15,
+            FontWeight = FontWeight.Bold,
+            Foreground = font,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        titleRow.Children.Add(new TextBlock
+        {
+            Text = "v" + plugin.PluginVersion,
+            FontSize = 11,
+            Opacity = 0.7,
+            Foreground = font,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 0, 0, 2),
+        });
+        titleRow.Children.Add(new Border
+        {
+            Background = accent,
+            CornerRadius = new CornerRadius(4),
+            Padding = new Thickness(6, 1),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new TextBlock { Text = "installed", FontSize = 10, Foreground = Brushes.White },
+        });
+
+        var inner = new StackPanel { Spacing = 8 };
+        inner.Children.Add(titleRow);
+
+        var desc = plugin.PluginDescription;
+        if (!string.IsNullOrWhiteSpace(desc))
+            inner.Children.Add(new TextBlock
+            {
+                Text = desc,
+                FontSize = 12,
+                Opacity = 0.8,
+                Foreground = font,
+                TextWrapping = TextWrapping.Wrap,
+            });
+
+        inner.Children.Add(new Avalonia.Controls.Shapes.Rectangle
+        {
+            Height = 1,
+            Fill = accent,
+            Margin = new Thickness(0, 2, 0, 4),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        });
+
+        inner.Children.Add(view);
+
+        return new Border
+        {
+            Background = bg,
+            BorderBrush = border,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(14),
+            Width = 210,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Child = inner,
         };
     }
 
@@ -441,7 +597,7 @@ internal sealed class {n}View : UserControl
     public {n}View(PluginContext ctx)
     {{
         _ctx = ctx;
-        var text = new SolidColorBrush(ctx.Color3);
+        var text = new SolidColorBrush(ctx.Font);
         var accent = new SolidColorBrush(ctx.Accent);
 
         var greeting = new TextBox {{ Text = ctx.GetSetting(KeyGreeting) ?? ""Hello"", Watermark = ""Greeting"", Width = 240, HorizontalAlignment = HorizontalAlignment.Left }};
@@ -534,7 +690,7 @@ internal sealed class {n}View : UserControl
         _count = ParseInt(ctx.GetSetting(KeyValue), 0);
         _step = Math.Max(1, ParseInt(ctx.GetSetting(KeyStep), 1));
 
-        var text = new SolidColorBrush(ctx.Color3);
+        var text = new SolidColorBrush(ctx.Font);
         var accent = new SolidColorBrush(ctx.Accent);
 
         _value.Foreground = accent;
