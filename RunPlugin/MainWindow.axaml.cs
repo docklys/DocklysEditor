@@ -1,0 +1,584 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Interactivity;
+using Avalonia.Markup.Xaml;
+using Avalonia.Media;
+using Docklys.ModuleContracts;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace RunPlugin;
+
+public partial class MainWindow : Window
+{
+    private sealed record PluginEntry(
+        string FolderName,
+        string CsprojPath,
+        string DllPath,
+        Type PluginType,
+        PluginLoadContext LoadContext);
+
+    private readonly List<PluginEntry> _catalog = new();
+    private int _currentIndex;
+
+    // Names of the bundled starter templates shown in the "Template" combo.
+    private static readonly string[] TemplateNames =
+        { "Greeter (text + toggles)", "Counter (buttons + slider)" };
+
+    public MainWindow()
+    {
+        InitializeComponent();
+
+        Loaded += (_, _) =>
+        {
+            LoadCatalog();
+            ShowPluginAtIndex(_currentIndex);
+        };
+    }
+
+    // ── Catalog ───────────────────────────────────────────────────────────────
+
+    private void LoadCatalog()
+    {
+        foreach (var e in _catalog) TryUnload(e.LoadContext);
+        _catalog.Clear();
+
+        var pluginsDir = GetPluginsSourceDir();
+        if (pluginsDir == null || !Directory.Exists(pluginsDir))
+            return;
+
+        foreach (var folder in Directory.EnumerateDirectories(pluginsDir))
+        {
+            var folderName = Path.GetFileName(folder);
+            var csproj = Path.Combine(folder, folderName + ".csproj");
+            if (!File.Exists(csproj)) continue;
+
+            var dll = FindFreshestDll(folder, folderName);
+            if (dll == null) continue;
+
+            PluginLoadContext? ctx = null;
+            try
+            {
+                ctx = new PluginLoadContext(dll);
+                var asm = ctx.LoadPlugin();
+                var type = SafeGetTypes(asm).FirstOrDefault(IsPluginType);
+                if (type != null)
+                {
+                    _catalog.Add(new PluginEntry(folderName, csproj, dll, type, ctx));
+                    ctx = null; // ownership transferred
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Catalog] {dll}: {ex.Message}");
+            }
+            finally { TryUnload(ctx); }
+        }
+
+        _catalog.Sort((a, b) => string.Compare(a.FolderName, b.FolderName, StringComparison.OrdinalIgnoreCase));
+        if (_currentIndex >= _catalog.Count) _currentIndex = 0;
+    }
+
+    private void ShowPluginAtIndex(int index)
+    {
+        var slot = this.FindControl<ContentControl>("PreviewSlot")!;
+        var label = this.FindControl<TextBlock>("PluginNameLabel")!;
+
+        if (_catalog.Count == 0)
+        {
+            slot.Content = null;
+            label.Text = "(no plugins — click New)";
+            return;
+        }
+
+        index = Math.Clamp(index, 0, _catalog.Count - 1);
+        _currentIndex = index;
+        var entry = _catalog[index];
+
+        try
+        {
+            var plugin = (IPlugin)Activator.CreateInstance(entry.PluginType)!;
+            var ctx = BuildContext(plugin.UniquePluginId);
+            var view = plugin.CreateSettingsView(ctx);
+
+            slot.Content = new ScrollViewer
+            {
+                Content = new Border { Padding = new Thickness(18), Child = view },
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            };
+            label.Text = $"{plugin.PluginName}   ({entry.FolderName})";
+        }
+        catch (Exception ex)
+        {
+            slot.Content = null;
+            label.Text = entry.FolderName + " (failed)";
+            _ = ShowMessageDialog("Plugin load failed",
+                $"'{entry.FolderName}' could not be loaded:\n\n{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private static PluginContext BuildContext(string pluginId)
+    {
+        var res = Application.Current?.Resources;
+        Color C(string key, Color fb)
+            => res != null && res.TryGetValue(key, out var v) && v is Color c ? c : fb;
+
+        var bag = PreviewSettingsBag.For(pluginId);
+        return new PluginContext
+        {
+            Color1 = C("ColorColorBackground", Color.Parse("#2A2D31")),
+            Color2 = C("ColorColor2Background", Color.Parse("#1A1C1F")),
+            Color3 = C("ColorColor3Background", Colors.White),
+            Accent = C("ColorAccent", Color.Parse("#4F9CF9")),
+            GetSetting = bag.Get,
+            SetSetting = bag.Set,
+        };
+    }
+
+    // ── Carousel buttons ──────────────────────────────────────────────────────
+
+    private void OnPrevClick(object? sender, RoutedEventArgs e)
+    {
+        if (_catalog.Count == 0) return;
+        ShowPluginAtIndex((_currentIndex - 1 + _catalog.Count) % _catalog.Count);
+    }
+
+    private void OnNextClick(object? sender, RoutedEventArgs e)
+    {
+        if (_catalog.Count == 0) return;
+        ShowPluginAtIndex((_currentIndex + 1) % _catalog.Count);
+    }
+
+    private void OnReloadClick(object? sender, RoutedEventArgs e)
+    {
+        LoadCatalog();
+        ShowPluginAtIndex(_currentIndex);
+    }
+
+    // ── New plugin (scaffold from template) ─────────────────────────────────────
+
+    private async void OnNewClick(object? sender, RoutedEventArgs e)
+    {
+        var pluginsDir = GetPluginsSourceDir();
+        if (pluginsDir == null)
+        {
+            await ShowMessageDialog("New Plugin", "Couldn't locate the Plugins source folder.");
+            return;
+        }
+
+        // Dialog: pick a template + name (mirrors RunPattern's create flow).
+        var spec = await PromptForNewPluginSpec(pluginsDir);
+        if (spec == null) return;
+        var name = spec.Name;
+        var templateIdx = spec.TemplateIndex;
+
+        var folder = Path.Combine(pluginsDir, name);
+        try
+        {
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, name + ".csproj"), CsprojTemplate);
+            File.WriteAllText(Path.Combine(folder, name + "Plugin.cs"), BuildSource(templateIdx, name));
+
+            var (ok, log) = await RunDotnetAsync("build", Path.Combine(folder, name + ".csproj"));
+            if (!ok)
+            {
+                await ShowMessageDialog("Build failed",
+                    $"Plugin '{name}' was created at:\n{folder}\n\nbut the build failed:\n\n{log}");
+                return;
+            }
+
+            LoadCatalog();
+            var idx = _catalog.FindIndex(c => string.Equals(c.FolderName, name, StringComparison.OrdinalIgnoreCase));
+            ShowPluginAtIndex(idx >= 0 ? idx : _currentIndex);
+            await ShowMessageDialog("Plugin created",
+                $"Plugin '{name}' created and built at:\n{folder}\n\nTune the code, then Push to Docklys.");
+        }
+        catch (Exception ex)
+        {
+            TryDeleteDirectory(folder);
+            await ShowMessageDialog("New plugin failed", $"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    // ── Push to Docklys ─────────────────────────────────────────────────────────
+
+    private async void OnDeployClick(object? sender, RoutedEventArgs e)
+    {
+        if (_catalog.Count == 0) { await ShowMessageDialog("Push to Docklys", "No plugin selected."); return; }
+        var entry = _catalog[Math.Clamp(_currentIndex, 0, _catalog.Count - 1)];
+        var button = sender as Button;
+        if (button != null) button.IsEnabled = false;
+
+        try
+        {
+            var (ok, log) = await RunDotnetAsync("build", entry.CsprojPath);
+            if (!ok) { await ShowMessageDialog("Build failed", $"'{entry.FolderName}' failed to build:\n\n{log}"); return; }
+
+            var dll = FindFreshestDll(Path.GetDirectoryName(entry.CsprojPath)!, entry.FolderName);
+            if (dll == null || !File.Exists(dll)) { await ShowMessageDialog("Push to Docklys", "Built, but no DLL found to copy."); return; }
+
+            var targetDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Docklys", "Plugin");
+            Directory.CreateDirectory(targetDir);
+            var dest = Path.Combine(targetDir, entry.FolderName + ".dll");
+
+            try
+            {
+                File.Copy(dll, dest, overwrite: true);
+            }
+            catch (IOException)
+            {
+                await ShowMessageDialog("Push to Docklys",
+                    $"Couldn't copy to:\n{dest}\n\nClose Docklys (it may be holding the DLL) and try again.");
+                return;
+            }
+
+            await ShowMessageDialog("Pushed to Docklys",
+                $"✓ Pushed '{entry.FolderName}' to:\n{dest}\n\nOpen Docklys → Settings → Plugins to see it.");
+        }
+        catch (Exception ex)
+        {
+            await ShowMessageDialog("Deploy failed", $"{ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            if (button != null) button.IsEnabled = true;
+        }
+    }
+
+    // ── Folder buttons ──────────────────────────────────────────────────────────
+
+    private void OnOpenPluginFolderClick(object? sender, RoutedEventArgs e)
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Docklys", "Plugin");
+        Directory.CreateDirectory(dir);
+        OpenFolder(dir);
+    }
+
+    private void OnOpenOutputFolderClick(object? sender, RoutedEventArgs e)
+    {
+        var root = FindEditorSolutionDir();
+        if (root == null) { _ = ShowMessageDialog("Open folder", "Editor solution root not found."); return; }
+        var dir = Path.Combine(root, "OutputPluginDLL");
+        Directory.CreateDirectory(dir);
+        OpenFolder(dir);
+    }
+
+    private void OpenFolder(string dir)
+    {
+        try { Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true }); }
+        catch (Exception ex) { _ = ShowMessageDialog("Open folder", $"Couldn't open {dir}:\n\n{ex.Message}"); }
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────────────────
+
+    private static void TryDeleteDirectory(string dir)
+    {
+        try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }
+        catch (Exception ex) { Debug.WriteLine($"[RunPlugin] rollback delete failed: {ex.Message}"); }
+    }
+
+    private static bool IsPluginType(Type t) =>
+        !t.IsAbstract && !t.IsInterface
+        && t.GetInterfaces().Any(i => i.Name == nameof(IPlugin))
+        && t.GetConstructor(Type.EmptyTypes) != null;
+
+    private static IEnumerable<Type> SafeGetTypes(System.Reflection.Assembly asm)
+    {
+        try { return asm.GetTypes(); }
+        catch (System.Reflection.ReflectionTypeLoadException ex) { return ex.Types.Where(t => t != null)!; }
+    }
+
+    private static void TryUnload(PluginLoadContext? ctx)
+    {
+        try { ctx?.Unload(); } catch { }
+    }
+
+    private static string? FindFreshestDll(string projectFolder, string assemblyName)
+    {
+        var candidates = new List<string>();
+
+        var root = FindEditorSolutionDirFrom(projectFolder);
+        if (root != null)
+        {
+            var outDir = Path.Combine(root, "OutputPluginDLL");
+            if (Directory.Exists(outDir))
+                candidates.AddRange(Directory.GetFiles(outDir, assemblyName + ".dll", SearchOption.AllDirectories));
+        }
+
+        var bin = Path.Combine(projectFolder, "bin");
+        if (Directory.Exists(bin))
+            candidates.AddRange(Directory.GetFiles(bin, assemblyName + ".dll", SearchOption.AllDirectories));
+
+        return candidates.OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+    }
+
+    private static string? GetPluginsSourceDir()
+    {
+        var root = FindEditorSolutionDir();
+        if (root == null) return null;
+        var dir = Path.Combine(root, "Plugins");
+        return dir;
+    }
+
+    private static string? FindEditorSolutionDir() => FindEditorSolutionDirFrom(AppContext.BaseDirectory);
+
+    private static string? FindEditorSolutionDirFrom(string start)
+    {
+        var dir = new DirectoryInfo(start);
+        while (dir != null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "DefaultModule.sln"))) return dir.FullName;
+            dir = dir.Parent;
+        }
+        return null;
+    }
+
+    private static async Task<(bool ok, string log)> RunDotnetAsync(string verb, string csprojPath)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "dotnet",
+                Arguments = $"{verb} \"{csprojPath}\" -c Debug",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            using var p = Process.Start(psi);
+            if (p == null) return (false, "Could not launch dotnet.");
+            var stdout = await p.StandardOutput.ReadToEndAsync();
+            var stderr = await p.StandardError.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            var log = (stdout + "\n" + stderr).Trim();
+            // Keep the tail — the useful errors are at the end.
+            if (log.Length > 1200) log = "…" + log[^1200..];
+            return (p.ExitCode == 0, log);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    // ── Embedded scaffolding templates ───────────────────────────────────────────
+
+    private const string CsprojTemplate =
+@"<Project Sdk=""Microsoft.NET.Sdk"">
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include=""Avalonia"" Version=""11.3.1"" />
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include=""..\..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj"" />
+    </ItemGroup>
+    <PropertyGroup>
+        <OutputPluginDir Condition="" '$(SolutionDir)' == '' "">$(MSBuildProjectDirectory)\..\..\OutputPluginDLL</OutputPluginDir>
+        <OutputPluginDir Condition="" '$(SolutionDir)' != '' "">$(SolutionDir)OutputPluginDLL</OutputPluginDir>
+    </PropertyGroup>
+    <Target Name=""CopyPluginDllAfterBuild"" AfterTargets=""Build"">
+        <MakeDir Directories=""$(OutputPluginDir)"" Condition=""!Exists('$(OutputPluginDir)')"" />
+        <Copy SourceFiles=""$(OutputPath)$(AssemblyName).dll"" DestinationFolder=""$(OutputPluginDir)"" />
+    </Target>
+</Project>
+";
+
+    private static string BuildSource(int templateIdx, string name)
+    {
+        var id = "user.plugin." + name.ToLowerInvariant();
+        return templateIdx switch
+        {
+            1 => CounterSource(name, id),
+            _ => GreeterSource(name, id),
+        };
+    }
+
+    private static string GreeterSource(string n, string id) => $@"using System;
+using System.Globalization;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Docklys.ModuleContracts;
+
+namespace DocklysPlugins;
+
+// Greeter template: a greeting card with a few persisted settings and a live
+// preview. Each control writes through ctx.SetSetting, so values survive a
+// 'Push to Docklys' and reload in the app's Settings ▸ Plugins page.
+public sealed class {n}Plugin : IPlugin
+{{
+    public string PluginName => ""{n}"";
+    public string PluginVersion => ""1.0"";
+    public string UniquePluginId {{ get; private set; }} = ""{id}"";
+    public string PluginDescription => ""A greeting with live, persisted settings."";
+    public void SetPluginId(string uniquePluginId) => UniquePluginId = uniquePluginId;
+    public Control CreateSettingsView(PluginContext ctx) => new {n}View(ctx);
+}}
+
+internal sealed class {n}View : UserControl
+{{
+    private readonly PluginContext _ctx;
+    private readonly TextBlock _preview = new();
+
+    private const string KeyGreeting = ""greeting"";
+    private const string KeyName = ""name"";
+    private const string KeySize = ""size"";
+    private const string KeyUpper = ""upper"";
+
+    public {n}View(PluginContext ctx)
+    {{
+        _ctx = ctx;
+        var text = new SolidColorBrush(ctx.Color3);
+        var accent = new SolidColorBrush(ctx.Accent);
+
+        var greeting = new TextBox {{ Text = ctx.GetSetting(KeyGreeting) ?? ""Hello"", Watermark = ""Greeting"", Width = 240, HorizontalAlignment = HorizontalAlignment.Left }};
+        greeting.TextChanged += (_, _) => {{ _ctx.SetSetting(KeyGreeting, greeting.Text); Update(); }};
+
+        var name = new TextBox {{ Text = ctx.GetSetting(KeyName) ?? ""world"", Watermark = ""Name"", Width = 240, HorizontalAlignment = HorizontalAlignment.Left }};
+        name.TextChanged += (_, _) => {{ _ctx.SetSetting(KeyName, name.Text); Update(); }};
+
+        var size = new Slider {{ Minimum = 12, Maximum = 48, Value = ParseDouble(ctx.GetSetting(KeySize), 22), Width = 240, HorizontalAlignment = HorizontalAlignment.Left, Foreground = accent }};
+        size.PropertyChanged += (_, e) =>
+        {{
+            if (e.Property != Slider.ValueProperty) return;
+            _ctx.SetSetting(KeySize, size.Value.ToString(""F0"", CultureInfo.InvariantCulture));
+            Update();
+        }};
+
+        var upper = new CheckBox {{ Content = ""UPPERCASE"", IsChecked = ParseBool(ctx.GetSetting(KeyUpper)), Foreground = text }};
+        upper.IsCheckedChanged += (_, _) => {{ _ctx.SetSetting(KeyUpper, upper.IsChecked == true ? ""true"" : ""false""); Update(); }};
+
+        _preview.Foreground = accent;
+        _preview.TextWrapping = TextWrapping.Wrap;
+
+        Content = new StackPanel
+        {{
+            Spacing = 8,
+            Children =
+            {{
+                Label(""Greeting"", text), greeting,
+                Label(""Name"", text), name,
+                Label(""Font size"", text), size,
+                upper,
+                Label(""Preview"", text),
+                new Border {{ Background = new SolidColorBrush(ctx.Color2), CornerRadius = new CornerRadius(6), Padding = new Thickness(12), Child = _preview }},
+            }},
+        }};
+        Update();
+    }}
+
+    private void Update()
+    {{
+        var greeting = _ctx.GetSetting(KeyGreeting) ?? ""Hello"";
+        var name = _ctx.GetSetting(KeyName) ?? ""world"";
+        var s = $""{{greeting}}, {{name}}!"";
+        if (ParseBool(_ctx.GetSetting(KeyUpper))) s = s.ToUpperInvariant();
+        _preview.Text = s;
+        _preview.FontSize = ParseDouble(_ctx.GetSetting(KeySize), 22);
+    }}
+
+    private static TextBlock Label(string s, IBrush b) => new() {{ Text = s, Foreground = b, FontSize = 12, Opacity = 0.85 }};
+    private static double ParseDouble(string? s, double fb) => double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : fb;
+    private static bool ParseBool(string? s) => string.Equals(s, ""true"", StringComparison.OrdinalIgnoreCase);
+}}
+";
+
+    private static string CounterSource(string n, string id) => $@"using System;
+using System.Globalization;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Docklys.ModuleContracts;
+
+namespace DocklysPlugins;
+
+// Counter template: a persisted integer with +/- buttons and an adjustable step.
+// Demonstrates buttons + a slider writing through ctx.SetSetting.
+public sealed class {n}Plugin : IPlugin
+{{
+    public string PluginName => ""{n}"";
+    public string PluginVersion => ""1.0"";
+    public string UniquePluginId {{ get; private set; }} = ""{id}"";
+    public string PluginDescription => ""A persisted counter with an adjustable step."";
+    public void SetPluginId(string uniquePluginId) => UniquePluginId = uniquePluginId;
+    public Control CreateSettingsView(PluginContext ctx) => new {n}View(ctx);
+}}
+
+internal sealed class {n}View : UserControl
+{{
+    private readonly PluginContext _ctx;
+    private readonly TextBlock _value = new();
+    private int _count;
+    private int _step;
+
+    private const string KeyValue = ""value"";
+    private const string KeyStep = ""step"";
+
+    public {n}View(PluginContext ctx)
+    {{
+        _ctx = ctx;
+        _count = ParseInt(ctx.GetSetting(KeyValue), 0);
+        _step = Math.Max(1, ParseInt(ctx.GetSetting(KeyStep), 1));
+
+        var text = new SolidColorBrush(ctx.Color3);
+        var accent = new SolidColorBrush(ctx.Accent);
+
+        _value.Foreground = accent;
+        _value.FontSize = 32;
+        _value.FontWeight = FontWeight.Bold;
+
+        var minus = new Button {{ Content = ""−"", Width = 44, FontSize = 18 }};
+        minus.Click += (_, _) => {{ _count -= _step; Persist(); }};
+        var plus = new Button {{ Content = ""+"", Width = 44, FontSize = 18 }};
+        plus.Click += (_, _) => {{ _count += _step; Persist(); }};
+        var reset = new Button {{ Content = ""Reset"" }};
+        reset.Click += (_, _) => {{ _count = 0; Persist(); }};
+
+        var step = new Slider {{ Minimum = 1, Maximum = 10, Value = _step, Width = 240, HorizontalAlignment = HorizontalAlignment.Left, Foreground = accent }};
+        step.PropertyChanged += (_, e) =>
+        {{
+            if (e.Property != Slider.ValueProperty) return;
+            _step = Math.Max(1, (int)Math.Round(step.Value));
+            _ctx.SetSetting(KeyStep, _step.ToString(CultureInfo.InvariantCulture));
+        }};
+
+        Content = new StackPanel
+        {{
+            Spacing = 10,
+            Children =
+            {{
+                _value,
+                new StackPanel {{ Orientation = Orientation.Horizontal, Spacing = 8, Children = {{ minus, plus, reset }} }},
+                new TextBlock {{ Text = ""Step"", Foreground = text, FontSize = 12, Opacity = 0.85 }},
+                step,
+            }},
+        }};
+        Render();
+    }}
+
+    private void Persist()
+    {{
+        _ctx.SetSetting(KeyValue, _count.ToString(CultureInfo.InvariantCulture));
+        Render();
+    }}
+
+    private void Render() => _value.Text = _count.ToString(CultureInfo.InvariantCulture);
+
+    private static int ParseInt(string? s, int fb) => int.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var v) ? v : fb;
+}}
+";
+}
