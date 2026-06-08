@@ -162,9 +162,9 @@ public partial class MainWindow : Window
 
             slot.Content = new ScrollViewer
             {
-                Content = new Border 
-                { 
-                    Padding = new Thickness(16, 32), 
+                Content = new Border
+                {
+                    Padding = new Thickness(16, 32),
                     Child = BuildPreviewCard(plugin, view),
                     HorizontalAlignment = HorizontalAlignment.Center
                 },
@@ -172,6 +172,7 @@ public partial class MainWindow : Window
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
             };
             label.Text = $"{plugin.PluginName}   ({entry.FolderName})";
+            RefreshMetaForCurrentPlugin();
         }
         catch (Exception ex)
         {

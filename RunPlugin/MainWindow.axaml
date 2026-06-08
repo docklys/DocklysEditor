@@ -316,6 +316,14 @@
                             Content="GitHub"
                             Click="OnGitHubClick"
                             ToolTip.Tip="Create a GitHub repository for this plugin and push the source code"/>
+                    <Button Classes="toolbar"
+                            Content="Info"
+                            Click="OnInfoClick"
+                            ToolTip.Tip="Edit plugin description and sync from GitHub (saves to docklys.json)"/>
+                    <Button Classes="toolbar"
+                            Content="Images"
+                            Click="OnImagesClick"
+                            ToolTip.Tip="Manage plugin images: icon, preview screenshot, extra screenshots"/>
                 </StackPanel>
             </Grid>
         </Border>

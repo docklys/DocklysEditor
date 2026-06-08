@@ -496,6 +496,14 @@
                             Content="GitHub"
                             Click="OnGitHubClick"
                             ToolTip.Tip="Create a GitHub repository for this module and push the source code"/>
+                    <Button Classes="toolbar"
+                            Content="Info"
+                            Click="OnInfoClick"
+                            ToolTip.Tip="Edit module description and sync from GitHub (saves to docklys.json)"/>
+                    <Button Classes="toolbar"
+                            Content="Images"
+                            Click="OnImagesClick"
+                            ToolTip.Tip="Manage module images: icon, preview screenshot, extra screenshots"/>
                 </StackPanel>
             </Grid>
         </Border>

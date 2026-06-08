@@ -106,6 +106,7 @@ public partial class MainWindow : Window
 
         label.Text = $"{entry.Name}   ({index + 1}/{_catalog.Count})";
         slot.Content = BuildThemePreview(entry);
+        RefreshMetaForCurrentTheme();
     }
 
     // ── Preview builder ───────────────────────────────────────────────────────

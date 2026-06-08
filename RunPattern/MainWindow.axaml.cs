@@ -115,6 +115,7 @@ public partial class MainWindow : Window
             _interaction = view as IPatternInteraction ?? pattern as IPatternInteraction;
             slot.Content = view;
             label.Text = $"{pattern.PatternName}   ({entry.FolderName})";
+            RefreshMetaForCurrentPattern();
         }
         catch (Exception ex)
         {

@@ -214,6 +214,14 @@
                             Click="OnGitHubClick"
                             ToolTip.Tip="Create a GitHub repository for this theme and push the .dockly file"/>
                     <Button Classes="toolbar"
+                            Content="Info"
+                            Click="OnInfoClick"
+                            ToolTip.Tip="Edit theme description, license, and GitHub link (saves sidecar .meta.json)"/>
+                    <Button Classes="toolbar"
+                            Content="Images"
+                            Click="OnImagesClick"
+                            ToolTip.Tip="Manage theme images: icon, preview screenshot, extra screenshots"/>
+                    <Button Classes="toolbar"
                             Content="Legal"
                             ToolTip.Tip="Legal &amp; Support">
                         <Button.Flyout>
