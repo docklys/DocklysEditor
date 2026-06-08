@@ -159,9 +159,21 @@ public partial class MainWindow : Window
         if (windowWidth > this.Width) this.Width = windowWidth;
         if (targetHeight > this.Height) this.Height = targetHeight;
     }
-    private async void OpenWebPFolder_Click(object sender, RoutedEventArgs e)
+    private void OpenWebPFolder_Click(object sender, RoutedEventArgs e)
     {
-        await OpenEditorOutputFolder("OutputWebPModule");
+        if (_currentIndex >= 0 && _currentIndex < _catalog.Count)
+        {
+            var entry = _catalog[_currentIndex];
+            var projectDir = Path.GetDirectoryName(entry.CsprojPath);
+            if (projectDir != null)
+            {
+                var dir = Path.Combine(projectDir, "Images");
+                Directory.CreateDirectory(dir);
+                Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true });
+                return;
+            }
+        }
+        _ = ShowMessageDialog("Open folder", "No module selected.");
     }
 
     // Shared opener for the OutputWebPModule and OutputModuleDLL folders.

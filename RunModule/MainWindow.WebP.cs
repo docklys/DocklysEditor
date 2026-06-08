@@ -208,7 +208,7 @@ public partial class MainWindow
             return;
         }
 
-        IntPtr hwnd = dockly.MainWindowHandle;
+        IntPtr hwnd = FindMainWindowForProcess(dockly.Id);
         if (hwnd == IntPtr.Zero)
         {
             await ShowMessageDialog("Capture Dock", "Could not find Dockly main window handle.");
@@ -236,24 +236,53 @@ public partial class MainWindow
 
         try
         {
-            using var bitmap = CaptureWindow(hwnd);
-            if (bitmap != null)
-            {
-                using var skImage = SKImage.FromBitmap(bitmap);
-                using var skData = skImage.Encode(SKEncodedImageFormat.Webp, 100);
-                using var output = File.Create(savePath);
-                skData.SaveTo(output);
+            bool ok = await RequestDockCaptureAsync(savePath);
+            if (ok && File.Exists(savePath))
                 await ShowMessageDialog("Capture Dock", $"✓ Screenshot saved to {savePath}");
-            }
             else
-            {
-                await ShowMessageDialog("Capture Failed", "Could not capture Dockly window pixels.");
-            }
+                await ShowMessageDialog("Capture Failed",
+                    "Dockly did not return a screenshot. Make sure you're running an up-to-date Dockly.Desktop build.");
         }
         catch (Exception ex)
         {
             await ShowMessageDialog("Capture Error", ex.Message);
         }
+    }
+
+    // Drives the file-based capture IPC. Dockly's window is excluded from OS screen capture
+    // (WDA_EXCLUDEFROMCAPTURE), so it can't be grabbed externally — instead we drop a request
+    // file naming the output path and let the running dock render itself into that WebP.
+    private static async Task<bool> RequestDockCaptureAsync(string outputPath)
+    {
+        var dir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Docklys", "capture-requests");
+        Directory.CreateDirectory(dir);
+
+        var id = Guid.NewGuid().ToString("N");
+        var reqPath = Path.Combine(dir, id + ".req");
+        var donePath = Path.Combine(dir, id + ".done");
+
+        // Write the temp file OUTSIDE the watched folder, then move it in: a move into the
+        // directory raises a single Created event with fully-flushed content (a same-folder
+        // rename would raise Renamed instead, which the watcher isn't listening for).
+        var tmp = Path.Combine(Path.GetTempPath(), id + ".req.tmp");
+        File.WriteAllText(tmp, outputPath);
+        File.Move(tmp, reqPath);
+
+        // Wait up to ~15s for the dock to render and signal completion.
+        for (int i = 0; i < 300; i++)
+        {
+            if (File.Exists(donePath))
+            {
+                string status = "";
+                try { status = File.ReadAllText(donePath).Trim(); } catch { }
+                try { File.Delete(donePath); } catch { }
+                return status.StartsWith("OK");
+            }
+            await Task.Delay(50);
+        }
+        try { if (File.Exists(reqPath)) File.Delete(reqPath); } catch { }
+        return false;
     }
 
     private SKBitmap? CaptureWindow(IntPtr hwnd)
@@ -263,32 +292,63 @@ public partial class MainWindow
         int height = rect.Bottom - rect.Top;
         if (width <= 0 || height <= 0) return null;
 
-        IntPtr hdcSrc = GetWindowDC(hwnd);
-        IntPtr hdcDest = CreateCompatibleDC(hdcSrc);
-        IntPtr hBitmap = CreateCompatibleBitmap(hdcSrc, width, height);
+        // Dockly's main window is transparent and GPU/DirectComposition-composited, so a plain
+        // screen BitBlt only captures the desktop *behind* it. PW_RENDERFULLCONTENT (0x2) asks the
+        // window to render its own content (including the composed surface) into our DC instead.
+        IntPtr hdcScreen = GetDC(IntPtr.Zero);
+        IntPtr hdcDest = CreateCompatibleDC(hdcScreen);
+        IntPtr hBitmap = CreateCompatibleBitmap(hdcScreen, width, height);
         IntPtr hOld = SelectObject(hdcDest, hBitmap);
-        
-        // Use SRCCOPY | 0x40000000 (CAPTUREBLT) to include layered windows
-        BitBlt(hdcDest, 0, 0, width, height, hdcSrc, 0, 0, 0x00CC0020 | 0x40000000);
-        
-        var bitmap = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
-        
+
+        PrintWindow(hwnd, hdcDest, 0x00000002);
+
+        // Opaque: GDI leaves the alpha byte at 0, which would otherwise encode as a fully
+        // transparent ("empty") WebP even though the RGB pixels are correct.
+        var bitmap = new SKBitmap(width, height, SKColorType.Bgra8888, SKAlphaType.Opaque);
+
         BITMAPINFO bmi = new BITMAPINFO();
         bmi.bmiHeader.biSize = (uint)Marshal.SizeOf(typeof(BITMAPINFOHEADER));
         bmi.bmiHeader.biWidth = width;
-        bmi.bmiHeader.biHeight = -height; 
+        bmi.bmiHeader.biHeight = -height;
         bmi.bmiHeader.biPlanes = 1;
         bmi.bmiHeader.biBitCount = 32;
         bmi.bmiHeader.biCompression = 0;
 
-        GetDIBits(hdcSrc, hBitmap, 0, (uint)height, bitmap.GetPixels(), ref bmi, 0);
+        GetDIBits(hdcDest, hBitmap, 0, (uint)height, bitmap.GetPixels(), ref bmi, 0);
 
         SelectObject(hdcDest, hOld);
         DeleteObject(hBitmap);
         DeleteDC(hdcDest);
-        ReleaseDC(hwnd, hdcSrc);
+        ReleaseDC(IntPtr.Zero, hdcScreen);
 
         return bitmap;
+    }
+
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    private static IntPtr FindMainWindowForProcess(int pid)
+    {
+        IntPtr found = IntPtr.Zero;
+        EnumWindows((hwnd, _) =>
+        {
+            GetWindowThreadProcessId(hwnd, out uint wPid);
+            if (wPid == (uint)pid && IsWindowVisible(hwnd))
+            {
+                found = hwnd;
+                return false;
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
     }
 
     [DllImport("user32.dll")]
@@ -312,8 +372,11 @@ public partial class MainWindow
     [DllImport("gdi32.dll")]
     private static extern IntPtr SelectObject(IntPtr hDC, IntPtr hObject);
 
-    [DllImport("gdi32.dll")]
-    private static extern bool BitBlt(IntPtr hdcDest, int nXDest, int nYDest, int nWidth, int nHeight, IntPtr hdcSrc, int nXSrc, int nYSrc, int dwRop);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetDC(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
 
     [DllImport("gdi32.dll")]
     private static extern bool DeleteDC(IntPtr hDC);
