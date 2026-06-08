@@ -4,7 +4,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="776" d:DesignHeight="338"
         x:Class="RunPlugin.MainWindow"
-        Title="RunPlugin"
+        Title="Plugin Editor - Docklys"
         Width="776"
         Height="420"
         MinWidth="450"
@@ -263,6 +263,39 @@
                 <!-- Artifacts -->
                 <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Button Classes="toolbar"
+                            Content="Legal"
+                            ToolTip.Tip="Legal &amp; Support">
+                        <Button.Flyout>
+                            <MenuFlyout Placement="Top">
+                                <MenuItem Header="Terms of Service" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/terms-of-service"/>
+                                <MenuItem Header="Developer Terms" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/developer-terms"/>
+                                <MenuItem Header="Privacy Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/privacy-policy"/>
+                                <MenuItem Header="Legal Notice" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/legal-notice"/>
+                                <Separator/>
+                                <MenuItem Header="Revocation Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/revocation-policy"/>
+                                <MenuItem Header="Credits &amp; Licenses" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/credits"/>
+                                <MenuItem Header="Security Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/security"/>
+                                <MenuItem Header="Support &amp; FAQ" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/support"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                    <Button Classes="toolbar"
+                            Content="Save .webp"
+                            Click="CaptureToWebP_Click"
+                            ToolTip.Tip="Save a WebP screenshot of the active plugin settings view"/>
+                    <Button Classes="toolbar"
+                            Content="Capture Dock"
+                            Click="CaptureDock_Click"
+                            ToolTip.Tip="Capture a screenshot of the main Docklys dock and save it to the plugin's Images folder"/>
+                    <Button Classes="toolbar"
+                            Click="OnOpenWebPFolderClick"
+                            ToolTip.Tip="Open this plugin's Images folder">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="wicon" Fill="White" Data="M1.5,3.5 H6 L7.5,5.5 H14.5 V13 H1.5 Z" />
+                            <TextBlock Text=".webp" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="toolbar"
                             Click="OnOpenPluginFolderClick"
                             ToolTip.Tip="Open the Docklys Plugin folder (%APPDATA%\Docklys\Plugin)">
                         <StackPanel Orientation="Horizontal" Spacing="6">
@@ -278,6 +311,11 @@
                             <TextBlock Text="Output" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Button>
+                    <Button Name="GitHubButton"
+                            Classes="toolbar"
+                            Content="GitHub"
+                            Click="OnGitHubClick"
+                            ToolTip.Tip="Create a GitHub repository for this plugin and push the source code"/>
                 </StackPanel>
             </Grid>
         </Border>

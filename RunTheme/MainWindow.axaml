@@ -1,0 +1,237 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="680" d:DesignHeight="440"
+        x:Class="RunTheme.MainWindow"
+        Title="Theme Editor - Docklys"
+        Width="680"
+        Height="500"
+        MinWidth="480"
+        MinHeight="300"
+        SizeToContent="Manual"
+        WindowStartupLocation="CenterScreen"
+        RequestedThemeVariant="Dark"
+        Background="#1A1A1A"
+        Foreground="White">
+    <Window.Styles>
+        <Style Selector="Border.toolbar-bar">
+            <Setter Property="Background" Value="#202020" />
+            <Setter Property="BorderBrush" Value="#2F2F2F" />
+        </Style>
+
+        <Style Selector="Button.scroll-arrow">
+            <Setter Property="Width" Value="36" />
+            <Setter Property="Height" Value="56" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.scroll-arrow /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.scroll-arrow:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.scroll-arrow:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.scroll-arrow Path">
+            <Setter Property="Stroke" Value="White" />
+            <Setter Property="StrokeThickness" Value="2.5" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+        </Style>
+        <Style Selector="Button.scroll-arrow:pointerover Path">
+            <Setter Property="StrokeThickness" Value="3.5" />
+        </Style>
+
+        <Style Selector="Button.toolbar">
+            <Setter Property="Height" Value="26" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="10,2" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#2A2A2A" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.toolbar /template/ ContentPresenter">
+            <Setter Property="Background" Value="#2A2A2A" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+        </Style>
+        <Style Selector="Button.toolbar:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#3D3D3D" />
+            <Setter Property="BorderBrush" Value="#777777" />
+            <Setter Property="TextElement.Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.toolbar:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#1A1A1A" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="TextElement.Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.toolbar:disabled /template/ ContentPresenter">
+            <Setter Property="Background" Value="#222222" />
+            <Setter Property="BorderBrush" Value="#3A3A3A" />
+            <Setter Property="TextElement.Foreground" Value="#666666" />
+        </Style>
+
+        <Style Selector="Button.toolbar.primary /template/ ContentPresenter">
+            <Setter Property="Background" Value="#4A4A4A" />
+            <Setter Property="BorderBrush" Value="#888888" />
+        </Style>
+        <Style Selector="Button.toolbar.primary:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#5C5C5C" />
+            <Setter Property="BorderBrush" Value="#AAAAAA" />
+        </Style>
+        <Style Selector="Button.toolbar.primary:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="#383838" />
+            <Setter Property="BorderBrush" Value="#888888" />
+        </Style>
+
+        <Style Selector="Button.toolbar Path.wicon">
+            <Setter Property="Width" Value="14" />
+            <Setter Property="Height" Value="14" />
+            <Setter Property="Stretch" Value="Uniform" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+
+        <!-- ═════════ Top bar: identity | reload ═════════ -->
+        <Border Grid.Row="0"
+                Classes="toolbar-bar"
+                BorderThickness="0,0,0,1"
+                Padding="10,6">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <TextBlock Name="ThemeNameLabel"
+                           Grid.Column="0"
+                           Text="(no themes)"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="White"
+                           VerticalAlignment="Center"
+                           MinWidth="120"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Name="ReloadButton"
+                            Classes="toolbar"
+                            Content="↺ Reload"
+                            Click="OnReloadClick"
+                            ToolTip.Tip="Reload themes from %AppData%\Docklys\ThemeLibrary" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ═════════ Theme preview with carousel arrows ═════════ -->
+        <Grid Name="PreviewGrid" Grid.Row="1" ClipToBounds="False">
+            <Border Name="PreviewBorder" Background="Transparent">
+                <ContentControl Name="PreviewSlot"
+                                HorizontalContentAlignment="Stretch"
+                                VerticalContentAlignment="Stretch" />
+            </Border>
+
+            <Button Name="ScrollLeftButton"
+                    Classes="scroll-arrow"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Center"
+                    Margin="10,0,0,0"
+                    Click="OnPrevClick"
+                    ToolTip.Tip="Previous theme">
+                <Path Data="M 12 0 L 0 16 L 12 32" />
+            </Button>
+            <Button Name="ScrollRightButton"
+                    Classes="scroll-arrow"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    Margin="0,0,10,0"
+                    Click="OnNextClick"
+                    ToolTip.Tip="Next theme">
+                <Path Data="M 0 0 L 12 16 L 0 32" />
+            </Button>
+        </Grid>
+
+        <!-- ═════════ Bottom bar: apply | screenshot | folders | legal ═════════ -->
+        <Border Grid.Row="2"
+                Classes="toolbar-bar"
+                BorderThickness="0,1,0,0"
+                Padding="10,6">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+
+                <!-- Primary action: apply theme to live Docklys -->
+                <Button Name="ApplyButton"
+                        Grid.Column="0"
+                        Classes="toolbar primary"
+                        Click="OnApplyClick"
+                        ToolTip.ShowDelay="200"
+                        ToolTip.Tip="Write this theme's colors and settings into %AppData%\Docklys">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Path Classes="wicon" Fill="White"
+                              Data="M8,2 L12,6 L8,10 L8,7 L3,7 L3,5 L8,5 Z M4,10 L4,13 L12,13 L12,10 L14,10 L14,15 L2,15 L2,10 Z" />
+                        <TextBlock Text="Apply to Docklys" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+                <!-- Right cluster: screenshot + folders + legal -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Classes="toolbar"
+                            Content="Save .webp"
+                            Click="CaptureToWebP_Click"
+                            ToolTip.Tip="Save a WebP screenshot of the theme preview" />
+                    <Button Classes="toolbar"
+                            Content="Capture Dock"
+                            Click="CaptureDock_Click"
+                            ToolTip.Tip="Capture a screenshot of the main Docklys dock and save it to this theme's Images folder" />
+                    <Button Classes="toolbar"
+                            Click="OnOpenWebPFolderClick"
+                            ToolTip.Tip="Open this theme's Images folder">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="wicon" Fill="White" Data="M1.5,3.5 H6 L7.5,5.5 H14.5 V13 H1.5 Z" />
+                            <TextBlock Text=".webp" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="toolbar"
+                            Click="OnOpenThemeFolderClick"
+                            ToolTip.Tip="Open the ThemeLibrary folder (%AppData%\Docklys\ThemeLibrary)">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Classes="wicon" Fill="White" Data="M1.5,3.5 H6 L7.5,5.5 H14.5 V13 H1.5 Z" />
+                            <TextBlock Text="Themes" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Name="GitHubButton"
+                            Classes="toolbar"
+                            Content="GitHub"
+                            Click="OnGitHubClick"
+                            ToolTip.Tip="Create a GitHub repository for this theme and push the .dockly file"/>
+                    <Button Classes="toolbar"
+                            Content="Legal"
+                            ToolTip.Tip="Legal &amp; Support">
+                        <Button.Flyout>
+                            <MenuFlyout Placement="Top">
+                                <MenuItem Header="Terms of Service" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/terms-of-service"/>
+                                <MenuItem Header="Developer Terms" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/developer-terms"/>
+                                <MenuItem Header="Privacy Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/privacy-policy"/>
+                                <MenuItem Header="Legal Notice" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/legal-notice"/>
+                                <Separator/>
+                                <MenuItem Header="Revocation Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/revocation-policy"/>
+                                <MenuItem Header="Credits &amp; Licenses" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/credits"/>
+                                <MenuItem Header="Security Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/security"/>
+                                <MenuItem Header="Support &amp; FAQ" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/support"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

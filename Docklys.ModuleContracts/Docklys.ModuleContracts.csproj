@@ -3,6 +3,13 @@
 		<TargetFramework>net8.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+		<PackageId>Docklys.ModuleContracts</PackageId>
+		<Version>1.0.1</Version>
+		<Authors>qwqc</Authors>
+		<Description>Interfaces and shared types for building Docklys modules, patterns, and plugins — IModule, IPattern, IPlugin, and the CalendarBridge.</Description>
+		<PackageTags>docklys;module;pattern;plugin;contracts;avalonia</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://docklys.qwqc.dedyn.io</PackageProjectUrl>
 	</PropertyGroup>
 
 	<ItemGroup>

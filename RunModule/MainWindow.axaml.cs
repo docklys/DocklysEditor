@@ -47,7 +47,7 @@ public partial class MainWindow : Window
             InitializeMainAppSizeSnaps();
             var zoom = this.FindControl<Slider>("ZoomSlider");
             if (zoom != null)
-                
+                 
                 UpdateZoomLabel(zoom.Value, null);
         }
         catch { }
@@ -98,209 +98,6 @@ public partial class MainWindow : Window
 
         if (requiredWidth > this.Width) this.Width = requiredWidth;
         if (requiredHeight > this.Height) this.Height = requiredHeight;
-    }
-
-    private async void CaptureToWebP_Click(object sender, RoutedEventArgs e)
-    {
-        // WebP previews are per-module — capture the inner content of the
-        // active slot at 100%. The ContentControl wrapper would add
-        // alignment chrome to the bounding box, so reach through to its
-        // Content.
-        var slot = this.FindControl<ContentControl>("ActiveModuleSlot");
-        var control = slot?.Content as Control;
-        if (control == null) return;
-
-            // Capture at 100% scale without moving the visible module permanently.
-            // Supersampling scale: increase to render at higher resolution for much better saved image quality.
-            // Typical values: 2 or 4. 4 gives much sharper results but uses more memory.
-            const int captureScale = 4; // change to 2 or 1 if you need smaller files
-        var originalBounds = control.Bounds;
-        var originalTransform = control.RenderTransform;
-        var originalTransformOrigin = control.RenderTransformOrigin;
-
-        // Force capture at 100% (regardless of current zoom) and render off at origin, then restore layout.
-        try
-        {
-            control.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
-            control.RenderTransform = new ScaleTransform(1.0, 1.0);
-
-            // Measure for desired size and create bitmap accordingly (capture full module content at 100%)
-            control.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            var desired = control.DesiredSize;
-            // Multiply desired size and DPI by captureScale to supersample the render.
-            var size = new PixelSize(Math.Max(1, (int)Math.Ceiling(desired.Width * captureScale)), Math.Max(1, (int)Math.Ceiling(desired.Height * captureScale)));
-            var dpi = new Vector(96 * captureScale, 96 * captureScale);
-
-            using var rtb = new RenderTargetBitmap(size, dpi);
-
-            // Temporarily arrange at origin for rendering, then restore below
-            control.Arrange(new Rect(0, 0, desired.Width, desired.Height));
-            rtb.Render(control);
-
-            using var stream = new MemoryStream();
-            rtb.Save(stream);
-            stream.Seek(0, SeekOrigin.Begin);
-
-            // Load the Avalonia-rendered part into a mutable SkiaSharp bitmap
-            using var skStream = new SKManagedStream(stream);
-            var decoded = SKBitmap.Decode(skStream);
-            if (decoded == null)
-            {
-                Debug.WriteLine("❌ Decoded Avalonia SKBitmap is null");
-                return;
-            }
-            
-            // Create the final bitmap (mutable) and draw the Avalonia part as the base layer
-            var skBitmap = new SKBitmap(decoded.Width, decoded.Height);
-            using (var canvas = new SKCanvas(skBitmap))
-            {
-                canvas.DrawBitmap(decoded, 0, 0);
-                decoded.Dispose();
-
-                // --- BEGIN WEBVIEW COMPOSITING ---
-                // Native HWNDs (like WebView) are invisible to RenderTargetBitmap.
-                // We find them in the visual tree and "stamp" their live content on top.
-                var webViews = control.GetVisualDescendants()
-                    .OfType<Control>()
-                    .Where(c => c.GetType().Name.Contains("WebView"))
-                    .ToList();
-
-                if (webViews.Any())
-                {
-                    Debug.WriteLine($"[RunModule] Compositing {webViews.Count} WebView(s) into screenshot...");
-                    
-                    // The native WebView HWND is manipulated by the modules to hide scrollbars
-                    // and leave a padding for the rounded border. We must replicate this visually.
-                    const double WebViewPadding = 6.0;
-                    const double ScrollbarExtra = 15.0;
-
-                    foreach (var wv in webViews)
-                    {
-                        var wvBitmap = await CaptureWebViewAsync(wv);
-                        if (wvBitmap == null)
-                        {
-                            Debug.WriteLine($"[RunModule] Failed to capture WebView: {wv.GetType().Name}");
-                            continue;
-                        }
-
-                        // Determine where the WebView sits relative to the module's top-left
-                        var transform = wv.TransformToVisual(control);
-                        if (transform.HasValue)
-                        {
-                            var rect = new Rect(wv.Bounds.Size).TransformToAABB(transform.Value);
-                            
-                            // The actual visible area inside the padding
-                            var visibleRect = new SKRect(
-                                (float)((rect.X + WebViewPadding) * captureScale),
-                                (float)((rect.Y + WebViewPadding) * captureScale),
-                                (float)((rect.Right - WebViewPadding) * captureScale),
-                                (float)((rect.Bottom - WebViewPadding) * captureScale)
-                            );
-
-                            // Calculate the crop source rect. The native wvBitmap includes
-                            // the ScrollbarExtra. We only want the visible portion.
-                            double logicalVisibleW = rect.Width - (WebViewPadding * 2);
-                            double logicalVisibleH = rect.Height - (WebViewPadding * 2);
-                            
-                            float srcVisibleW = wvBitmap.Width * (float)(logicalVisibleW / (logicalVisibleW + ScrollbarExtra));
-                            float srcVisibleH = wvBitmap.Height * (float)(logicalVisibleH / (logicalVisibleH + ScrollbarExtra));
-                            var srcRect = new SKRect(0, 0, srcVisibleW, srcVisibleH);
-                            
-                            // Apply rounded corners (module has CornerRadius 10, minus 6 padding = 4)
-                            using var path = new SKPath();
-                            float cornerRadius = 4f * captureScale;
-                            path.AddRoundRect(visibleRect, cornerRadius, cornerRadius);
-                            
-                            canvas.Save();
-                            canvas.ClipPath(path, SKClipOperation.Intersect, antialias: true);
-                            
-                            // Draw the WebView's pixels
-                            canvas.DrawBitmap(wvBitmap, srcRect, visibleRect);
-                            
-                            canvas.Restore();
-                            
-                            Debug.WriteLine($"[RunModule] ✓ Composited WebView at {visibleRect.Left:0},{visibleRect.Top:0}");
-                        }
-                        wvBitmap.Dispose();
-                    }
-                }
-                // --- END WEBVIEW COMPOSITING ---
-            }
-
-            // The 'skBitmap' now contains "both together": the Avalonia UI + the WebViews.
-            SKBitmap bitmapToSave = skBitmap;
-
-            // Proceed to saving below (history logic)
-
-            // Locate the editor solution root via the .sln file — was
-            // previously walking up looking for a folder literally named
-            // "DocklysEditor", which never matched (the actual folder is
-            // "DocklysModuleEditor") so the capture silently dropped on
-            // the floor.
-            var editorRoot = FindEditorSolutionDir();
-            if (editorRoot == null)
-            {
-                Debug.WriteLine($"❌ Could not locate the editor solution root (no DefaultModule.sln) from: {AppContext.BaseDirectory}");
-                return;
-            }
-
-            var outputDir = Path.Combine(editorRoot, "OutputWebPModule");
-            Directory.CreateDirectory(outputDir);
-
-            // Rotating history: ModulePreview1.webp .. ModulePreview5.webp
-            var historyFiles = new string[5];
-            for (int i = 0; i < 5; i++)
-                historyFiles[i] = Path.Combine(outputDir, $"ModulePreview{i + 1}.webp");
-
-            // If there are existing files, shift older down (1 <- 2, 2 <- 3, ..., 4 <- 5)
-            if (File.Exists(historyFiles[0]))
-                File.Delete(historyFiles[0]);
-
-            for (int i = 0; i < 4; i++)
-            {
-                if (File.Exists(historyFiles[i + 1]))
-                {
-                    if (File.Exists(historyFiles[i]))
-                        File.Delete(historyFiles[i]);
-                    File.Move(historyFiles[i + 1], historyFiles[i]);
-                }
-            }
-
-            // Save the new capture as latest (index 4)
-            var savePath = historyFiles[4];
-            using (var output = File.OpenWrite(savePath))
-            using (var skImage = SKImage.FromBitmap(bitmapToSave))
-            // Use highest quality (100) for WebP encoding (lossy but max quality supported by this API)
-            using (var skData = skImage.Encode(SKEncodedImageFormat.Webp, 100))
-            {
-                skData.SaveTo(output);
-            }
-
-            if (File.Exists(savePath))
-            {
-                var fileInfo = new FileInfo(savePath);
-                Debug.WriteLine($"✓ WebP file created: {savePath} ({fileInfo.Length} bytes)");
-            }
-            else
-            {
-                Debug.WriteLine("❌ Failed to create WebP file");
-            }
-
-            return; // normal exit (restoration in finally)
-        }
-        finally
-        {
-            // Restore the control's transform and layout so it stays visually centered
-            try
-            {
-                control.RenderTransform = originalTransform;
-                control.RenderTransformOrigin = originalTransformOrigin;
-                control.Arrange(originalBounds);
-            }
-            catch { }
-        }
-
-        // (capture and save logic handled above; nothing further required here)
     }
 
     // Re-apply zoom to all visible module slots. Called by ShowModuleAtIndex
@@ -922,6 +719,21 @@ public partial class MainWindow : Window
         var btn = sender as Avalonia.Controls.Primitives.ToggleButton;
         _dualView = btn?.IsChecked == true;
         ShowModuleAtIndex(_currentIndex);
+    }
+
+    private void OpenLegalLink_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem menuItem && menuItem.Tag is string url)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Legal] Failed to open link {url}: {ex.Message}");
+            }
+        }
     }
 
     private async void OpenSavesFolder_Click(object sender, RoutedEventArgs e)

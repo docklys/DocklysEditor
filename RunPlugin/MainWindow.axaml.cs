@@ -417,7 +417,22 @@ public partial class MainWindow : Window
         OpenFolder(dir);
     }
 
-    private void OnOpenOutputFolderClick(object? sender, RoutedEventArgs e)
+    private void OpenLegalLink_Click(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem menuItem && menuItem.Tag is string url)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Legal] Failed to open link {url}: {ex.Message}");
+            }
+        }
+    }
+
+    private async void OnOpenOutputFolderClick(object sender, RoutedEventArgs e)
     {
         var root = FindEditorSolutionDir();
         if (root == null) { _ = ShowMessageDialog("Open folder", "Editor solution root not found."); return; }

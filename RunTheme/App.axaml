@@ -1,0 +1,19 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="RunTheme.App"
+             RequestedThemeVariant="Dark">
+    <Application.Resources>
+        <Color x:Key="ColorColorBackground">#1A1A1A</Color>
+        <Color x:Key="ColorColor2Background">#111111</Color>
+        <Color x:Key="ColorColor3Background">#FFFFFF</Color>
+        <Color x:Key="ColorAccent">#6B8F71</Color>
+        <SolidColorBrush x:Key="ColorFont" Color="#EDEDED" />
+        <SolidColorBrush x:Key="ColorAccentBrush" Color="#6B8F71" />
+        <SolidColorBrush x:Key="ColorModuleBackground" Color="#1F1F1F" />
+        <SolidColorBrush x:Key="ColorModuleBorder" Color="#2F2F2F" />
+    </Application.Resources>
+    <Application.Styles>
+        <StyleInclude Source="avares://Semi.Avalonia/Index.axaml" />
+        <StyleInclude Source="avares://Semi.Avalonia.ColorPicker/Index.axaml" />
+    </Application.Styles>
+</Application>

@@ -4,5 +4,6 @@
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/DefaultModule" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/VolumeMixer" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/spotify" vcs="Git" />
   </component>
 </project>

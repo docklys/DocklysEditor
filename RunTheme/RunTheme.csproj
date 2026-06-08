@@ -17,11 +17,4 @@
         <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" />
         <PackageReference Include="Avalonia.Skia" Version="11.3.1" />
     </ItemGroup>
-
-    <ItemGroup>
-        <ProjectReference Include="..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj" />
-        <!-- Bundled plugin so building RunPlugin builds it too; the catalog then
-             discovers it (and any other authored plugins) on disk under ..\Plugins. -->
-        <ProjectReference Include="..\Plugins\GoogleCalendar\GoogleCalendar.csproj" />
-    </ItemGroup>
 </Project>
