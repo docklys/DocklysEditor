@@ -1,9 +1,9 @@
 {
-  "name": "Comms",
+  "name": "VChat",
   "type": "module",
-  "license": "MIT",
+  "license": "None",
   "description": "",
   "version": "1.0",
-  "sizeBytes": 17408,
+  "sizeBytes": 70656,
   "githubRepo": ""
 }

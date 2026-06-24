@@ -64,4 +64,4 @@ Follow these steps to create your first module from scratch:
 - **Publishing via Editor:** Use **⚡ Push to Docklys** to instantly test your module in the live Docklys application.
 - **Defining Widths:** Make sure to set `PreferredTileWidth` and `PreferredTileHeight` properly so Dockly can adapt them for design accuracy.
 - **Theme Support:** Always use `{DynamicResource <Key>}` from `SkinKeys.cs` instead of hardcoding colors.
-- **Publishing to Web:** You can publish and share your created modules on the official [Docklys Website](https://docklys.qwqc.dedyn.io/DocklysEditor). When creating a module via the editor, you can also select an open-source license which will be automatically generated for you!
+- **Publishing to Web:** You can publish and share your created modules on the official [Docklys Website](https://docklys.qwqc.de/DocklysEditor). When creating a module via the editor, you can also select an open-source license which will be automatically generated for you!

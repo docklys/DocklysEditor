@@ -1,0 +1,85 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Comms.Comms">
+    <!-- Protocol-agnostic chat shell. The conversation pane fills the tile; the
+         contact sidebar is docked when wide and collapses to an overlay drawer
+         when the tile is small (driven by Bounds in code-behind). -->
+    <Border Name="RootBorder"
+            Background="{DynamicResource ColorModuleColor}"
+            CornerRadius="10"
+            ClipToBounds="True"
+            MinWidth="160" MinHeight="160">
+        <Grid>
+            <!-- Conversation pane (always full tile; left margin reserves the
+                 sidebar in wide mode). -->
+            <Grid Name="ConvPane" RowDefinitions="Auto,*,Auto">
+                <!-- Header: menu (drawer) button + title + resize controls -->
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="6,6,6,4">
+                    <Button Name="MenuButton" Grid.Column="0"
+                            Content="☰" FontSize="13" Padding="6,2"
+                            IsVisible="False"
+                            Background="Transparent"
+                            Foreground="{DynamicResource ColorModuleFont}"/>
+                    <TextBlock Name="ConvTitle" Grid.Column="1"
+                               Text="Comms" FontSize="12" FontWeight="Bold"
+                               VerticalAlignment="Center" Margin="4,0"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource ColorModuleFont}"/>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
+                        <Button Name="WidthMinus"  Content="–W" FontSize="9" Padding="4,1" Background="Transparent" Foreground="{DynamicResource ColorModuleFont}"/>
+                        <Button Name="WidthPlus"   Content="+W" FontSize="9" Padding="4,1" Background="Transparent" Foreground="{DynamicResource ColorModuleFont}"/>
+                        <Button Name="HeightMinus" Content="–H" FontSize="9" Padding="4,1" Background="Transparent" Foreground="{DynamicResource ColorModuleFont}"/>
+                        <Button Name="HeightPlus"  Content="+H" FontSize="9" Padding="4,1" Background="Transparent" Foreground="{DynamicResource ColorModuleFont}"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Messages -->
+                <ScrollViewer Name="MessageScroller" Grid.Row="1"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto"
+                              Padding="6,0">
+                    <StackPanel Name="MessageList" Spacing="4"/>
+                </ScrollViewer>
+
+                <!-- Composer -->
+                <DockPanel Grid.Row="2" Margin="6" LastChildFill="True">
+                    <Button Name="AttachButton" DockPanel.Dock="Left"
+                            Content="📎" FontSize="12" Padding="6,2" Margin="0,0,4,0"
+                            Background="Transparent" Foreground="{DynamicResource ColorModuleFont}"
+                            ToolTip.Tip="Attach a file"/>
+                    <Button Name="SendButton" DockPanel.Dock="Right"
+                            Content="Send" FontSize="10" Padding="8,2" Margin="4,0,0,0"
+                            Foreground="{DynamicResource ColorModuleFont}"/>
+                    <TextBox Name="Composer" FontSize="11"
+                             Watermark="Message…"
+                             AcceptsReturn="False"
+                             Foreground="{DynamicResource ColorModuleFont}"/>
+                </DockPanel>
+            </Grid>
+
+            <!-- Scrim behind the drawer (narrow mode only) -->
+            <Border Name="Scrim" Background="#80000000" IsVisible="False"/>
+
+            <!-- Sidebar / drawer: contact + provider list. Rendered last so it
+                 layers above the conversation pane when used as an overlay. -->
+            <Border Name="SidebarBorder"
+                    HorizontalAlignment="Left"
+                    Width="150"
+                    Background="{DynamicResource ColorModuleColor}"
+                    BorderBrush="#22FFFFFF" BorderThickness="0,0,1,0">
+                <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Top" Text="Chats"
+                               FontSize="11" FontWeight="Bold" Margin="8,8,8,4"
+                               Foreground="{DynamicResource ColorModuleFont}"/>
+                    <TextBlock Name="ConnStatus" DockPanel.Dock="Bottom"
+                               Text="" FontSize="9" Opacity="0.7" Margin="8,4,8,8"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource ColorModuleFont}"/>
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Name="ContactList" Spacing="1" Margin="4,0"/>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>

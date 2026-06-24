@@ -54,7 +54,7 @@ public partial class MainWindow
                 "1. Download the `.dockly` file from this repository.\n" +
                 "2. In Docklys, open Settings → Theme Library → Import.\n" +
                 "3. Select the downloaded `.dockly` file.\n\n" +
-                "Created with [Docklys](https://docklys.qwqc.dedyn.io).\n");
+                "Created with [Docklys](https://docklys.qwqc.de).\n");
 
             // Ensure the folder is a git repo.
             bool gitInited = Directory.Exists(Path.Combine(tempDir, ".git"));

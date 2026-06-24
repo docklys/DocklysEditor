@@ -34,6 +34,5 @@
         <ProjectReference Include="..\VolumeMixer\VolumeMixer.csproj" />
         <ProjectReference Include="..\spotify\spotify.csproj" />
         <ProjectReference Include="..\VChat\VChat.csproj" />
-        <ProjectReference Include="..\Todo\Todo.csproj" />
     </ItemGroup>
 </Project>

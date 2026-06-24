@@ -226,15 +226,15 @@
                             ToolTip.Tip="Legal &amp; Support">
                         <Button.Flyout>
                             <MenuFlyout Placement="Top">
-                                <MenuItem Header="Terms of Service" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/terms-of-service"/>
-                                <MenuItem Header="Developer Terms" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/developer-terms"/>
-                                <MenuItem Header="Privacy Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/privacy-policy"/>
-                                <MenuItem Header="Legal Notice" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/legal-notice"/>
+                                <MenuItem Header="Terms of Service" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/terms-of-service"/>
+                                <MenuItem Header="Developer Terms" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/developer-terms"/>
+                                <MenuItem Header="Privacy Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/privacy-policy"/>
+                                <MenuItem Header="Legal Notice" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/legal-notice"/>
                                 <Separator/>
-                                <MenuItem Header="Revocation Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/revocation-policy"/>
-                                <MenuItem Header="Credits &amp; Licenses" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/credits"/>
-                                <MenuItem Header="Security Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/security"/>
-                                <MenuItem Header="Support &amp; FAQ" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.dedyn.io/support"/>
+                                <MenuItem Header="Revocation Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/revocation-policy"/>
+                                <MenuItem Header="Credits &amp; Licenses" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/credits"/>
+                                <MenuItem Header="Security Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/security"/>
+                                <MenuItem Header="Support &amp; FAQ" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/support"/>
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>

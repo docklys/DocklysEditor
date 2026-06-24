@@ -12,16 +12,16 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
 
-namespace VChat
+namespace Webview
 {
-    public partial class VChat : UserControl, IModule, IResizable, IInteractionFreezable
+    public partial class Webview : UserControl, IModule, IResizable, IInteractionFreezable
     {
         // IModule
-        public string Id => "VChat";
-        public string ModuleName => "VChat";
+        public string Id => "Webview";
+        public string ModuleName => "Webview";
         public string ModuleVersion => "1.0.0";
         public string Category => "Media";
-        public string[] Tags => new[] { "VChat", "music", "streaming" };
+        public string[] Tags => new[] { "Webview", "music", "streaming" };
 
         public int PreferredTileWidth => 2;
         public int PreferredTileHeight => 3;
@@ -32,7 +32,11 @@ namespace VChat
 
         private string _uniqueModuleId = string.Empty;
         public string UniqueModuleId => _uniqueModuleId;
-        public void SetModuleId(string id) => _uniqueModuleId = id;
+        public void SetModuleId(string id)
+        {
+            _uniqueModuleId = id;
+            LoadSettings();
+        }
         public void PrintModuleId() => Console.WriteLine($"Module ID: {UniqueModuleId}");
 
         // IResizable
@@ -44,7 +48,7 @@ namespace VChat
             _currentH = height;
             RefreshSizeDisplay();
 
-            Console.WriteLine($"[VChat] SetTileSize called -> width={width},height={height}, webViewCreated={_webViewCreated}, webViewIsNull={_webView==null}, cachedHwnd={_webViewHwnd}");
+            Console.WriteLine($"[Spotify] SetTileSize called -> width={width},height={height}, webViewCreated={_webViewCreated}, webViewIsNull={_webView==null}, cachedHwnd={_webViewHwnd}");
 
             // Host requested a tile-size change — aggressively force the WebView to
             // relayout and resync immediately so the new size is visible without
@@ -63,7 +67,7 @@ namespace VChat
                 {
                     try
                     {
-                        Console.WriteLine("[VChat] SetTileSize: performing relayout/resync attempt");
+                        Console.WriteLine("[Spotify] SetTileSize: performing relayout/resync attempt");
                         if (_webView == null)
                         {
                             if (!_webViewCreated) RequestCreateWebView();
@@ -80,7 +84,7 @@ namespace VChat
                                     retry.Stop();
                                     try
                                     {
-                                        Console.WriteLine("[VChat] Retry: webview appeared, forcing relayout");
+                                        Console.WriteLine("[Spotify] Retry: webview appeared, forcing relayout");
                                         ForceWebViewRelayout();
                                         SyncWebViewHwndToVisualBounds();
                                         ApplyWebViewRoundedCorners();
@@ -88,7 +92,7 @@ namespace VChat
                                     }
                                     catch (Exception ex)
                                     {
-                                        Console.WriteLine($"[VChat] Retry relayout failed: {ex.Message}");
+                                        Console.WriteLine($"[Spotify] Retry relayout failed: {ex.Message}");
                                     }
                                 }
                                 else if (attempts > 12) // ~1.2s timeout
@@ -102,7 +106,7 @@ namespace VChat
                         {
                             if (_webView.IsVisible)
                             {
-                                Console.WriteLine("[VChat] SetTileSize: webView exists, forcing immediate relayout and sync");
+                                Console.WriteLine("[Spotify] SetTileSize: webView exists, forcing immediate relayout and sync");
                                 // Immediate aggressive relayout + multiple follow-ups so
                                 // platform races are less likely to leave the HWND stale.
                                 ForceWebViewRelayout();
@@ -144,13 +148,13 @@ namespace VChat
                                         var hw = TryGetWebViewHwnd();
                                         if ((Math.Abs(curW - lastW) > 0.5 || Math.Abs(curH - lastH) > 0.5) || hw != IntPtr.Zero)
                                         {
-                                            Console.WriteLine($"[VChat] Poll success: bounds={curW}x{curH}, hwnd={hw}");
+                                            Console.WriteLine($"[Spotify] Poll success: bounds={curW}x{curH}, hwnd={hw}");
                                             poll.Stop();
                                             return;
                                         }
                                         if (pollAttempts > 20) // ~2s
                                         {
-                                            Console.WriteLine("[VChat] Poll timeout: giving up after attempts");
+                                            Console.WriteLine("[Spotify] Poll timeout: giving up after attempts");
                                             poll.Stop();
                                         }
                                     }
@@ -160,7 +164,7 @@ namespace VChat
                             }
                             else
                             {
-                                Console.WriteLine("[VChat] SetTileSize: webView is hidden, skipping relayout sync to prevent engine crash.");
+                                Console.WriteLine("[Spotify] SetTileSize: webView is hidden, skipping relayout sync to prevent engine crash.");
                             }
 
                             // NOTE: a brute-force "enumerate every child HWND of the window and
@@ -229,10 +233,72 @@ namespace VChat
             StartContinuousSync();
         }
 
-        private const string VChatUrl = "https://v.qwqc.de/";
+        private string CurrentUrl = "https://www.google.com/";
         private const double WebViewPadding = 6.0;
 
-        public VChat()
+        private void LoadSettings()
+        {
+            if (string.IsNullOrEmpty(UniqueModuleId)) return;
+            try
+            {
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var path = Path.Combine(appData, "Docklys", "ModuleSaves", "Webview", $"{UniqueModuleId}.json");
+                if (File.Exists(path))
+                {
+                    var json = File.ReadAllText(path);
+                    using var doc = System.Text.Json.JsonDocument.Parse(json);
+                    if (doc.RootElement.TryGetProperty("Url", out var urlProp))
+                    {
+                        CurrentUrl = urlProp.GetString() ?? "https://www.google.com/";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Webview] LoadSettings failed: {ex.Message}");
+            }
+            
+            if (UrlTextBox != null)
+                UrlTextBox.Text = CurrentUrl;
+        }
+
+        private void SaveSettings()
+        {
+            if (string.IsNullOrEmpty(UniqueModuleId)) return;
+            try
+            {
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var dir = Path.Combine(appData, "Docklys", "ModuleSaves", "Webview");
+                Directory.CreateDirectory(dir);
+                var path = Path.Combine(dir, $"{UniqueModuleId}.json");
+                var json = System.Text.Json.JsonSerializer.Serialize(new { Url = CurrentUrl });
+                File.WriteAllText(path, json);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Webview] SaveSettings failed: {ex.Message}");
+            }
+        }
+
+        private void NavigateToCurrentUrl()
+        {
+            if (_webView == null) return;
+            try
+            {
+                var urlProp = _webView.GetType().GetProperty("Url", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                if (urlProp != null)
+                {
+                    urlProp.SetValue(_webView, new Uri(CurrentUrl));
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Webview] NavigateToCurrentUrl failed: {ex.Message}");
+            }
+        }
+
+        public Webview()
         {
             InitializeComponent();
 
@@ -242,21 +308,29 @@ namespace VChat
             HeightPlus.Click  += (_, _) => Adjust( 0, +1);
 
             SettingsButton.Click += (_, _) => ToggleSettings(true);
-            CloseSettingsButton.Click += (_, _) => ToggleSettings(false);
+            CloseSettingsButton.Click += (_, _) => 
+            {
+                ToggleSettings(false);
+                var newUrl = UrlTextBox.Text?.Trim();
+                if (!string.IsNullOrEmpty(newUrl) && newUrl != CurrentUrl)
+                {
+                    if (!newUrl.StartsWith("http://") && !newUrl.StartsWith("https://"))
+                        newUrl = "https://" + newUrl;
+                    CurrentUrl = newUrl;
+                    SaveSettings();
+                    NavigateToCurrentUrl();
+                }
+            };
 
-            // NOTE: No PointerPressed SetFocus here. Spotify (the working reference,
-            // same native-WebView2 setup) has zero focus-stealing code and clicks +
-            // typing work. Forcing Win32 focus mid-interaction was breaking clicks,
-            // so we let WebView2 manage its own focus like Spotify does.
-
-            // Ctrl+scroll: manually drive WebView2 ZoomFactor so it works even when
-            // the parent Avalonia window captures the wheel event before the HWND sees it.
+            // Ctrl+scroll: drive the in-page scale-to-fit zoom. The in-page wheel listener
+            // (ScaleToFitScript) handles the common case where the cursor is over the native
+            // WebView HWND; this Avalonia-level handler is the fallback for when the wheel
+            // event is captured by the Avalonia window chrome instead of the HWND.
             this.PointerWheelChanged += (_, e) =>
             {
-                if (!e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control)) return;
+                if (!e.KeyModifiers.HasFlag(KeyModifiers.Control)) return;
                 e.Handled = true;
-                var delta = e.Delta.Y > 0 ? 0.1 : -0.1;
-                AdjustWebViewZoom(delta);
+                RunCoreScript("window.__docklyNudgeScale&&window.__docklyNudgeScale(" + (e.Delta.Y < 0 ? "-0.1" : "0.1") + ")");
             };
 
             RefreshSizeDisplay();
@@ -280,98 +354,6 @@ namespace VChat
                 StartContinuousSync();
             }
         }
-
-        // Adjust the in-page scale-to-fit zoom by delta (e.g. +0.1 or -0.1).
-        // We deliberately do NOT touch WebView2's ZoomFactor: changing it reflows this
-        // responsive site and trips its desktop breakpoint (see TryApplyInitialSettings),
-        // widening the layout past the tile so it gets clipped at the sides. Instead we
-        // drive the injected ScaleToFitScript, which applies a uniform CSS transform that
-        // always fills exactly the viewport width without changing the layout viewport.
-        // Used as the fallback for when the wheel event is captured by the Avalonia parent
-        // window instead of the native WebView HWND (the in-page listener handles the rest).
-        private void AdjustWebViewZoom(double delta)
-        {
-            RunCoreScript("window.__docklyNudgeScale&&window.__docklyNudgeScale(" + (delta < 0 ? "-0.1" : "0.1") + ")");
-        }
-
-        // Executes arbitrary JS in the WebView2 page via reflection. Drives the in-page
-        // scale-to-fit zoom from Avalonia-level input.
-        private void RunCoreScript(string js)
-        {
-            if (_webView == null) return;
-            try
-            {
-                _platformWebViewFieldCache ??= _webView.GetType().GetField(
-                    "_platformWebView", BindingFlags.NonPublic | BindingFlags.Instance);
-                if (_platformWebViewFieldCache == null) return;
-                var platformWebView = _platformWebViewFieldCache.GetValue(_webView);
-                if (platformWebView == null) return;
-                var platformType = platformWebView.GetType();
-                if (_coreControllerPropCache == null || _coreControllerPropCache.DeclaringType != platformType)
-                    _coreControllerPropCache = platformType.GetProperty(
-                        "_coreWebView2Controller", BindingFlags.NonPublic | BindingFlags.Instance);
-                if (_coreControllerPropCache == null) return;
-                var controller = _coreControllerPropCache.GetValue(platformWebView);
-                if (controller == null) return;
-                var core = controller.GetType().GetProperty("CoreWebView2")?.GetValue(controller);
-                if (core == null) return;
-                var exec = core.GetType().GetMethod("ExecuteScriptAsync", new[] { typeof(string) });
-                exec?.Invoke(core, new object[] { js });
-            }
-            catch { }
-        }
-
-        // Injected into the WebView page to implement "scale-to-fit" Ctrl+scroll zoom.
-        // Applies a uniform CSS transform to <html> with width/height compensated by 1/scale
-        // so the scaled visual always fills exactly 100% of the viewport — content is never
-        // clipped at the sides in either zoom direction, and media queries still see the real
-        // (narrow) viewport so the mobile layout is preserved. The capture-phase wheel
-        // listener calls preventDefault() so WebView2's native reflow-zoom never fires.
-        // Guarded by __docklyScaleReady so repeated injection is a no-op.
-        private const string ScaleToFitScript = @"
-(function(){
-    if (window.__docklyScaleReady) return;
-    window.__docklyScaleReady = true;
-    if (typeof window.__docklyScale !== 'number') window.__docklyScale = 1;
-    function apply(){
-        var de = document.documentElement;
-        if(!de) return;
-        var s = window.__docklyScale;
-        if (s === 1){
-            de.style.transform = '';
-            de.style.transformOrigin = '';
-            de.style.width = '';
-            de.style.height = '';
-        } else {
-            de.style.transformOrigin = '0 0';
-            de.style.transform = 'scale(' + s + ')';
-            de.style.width = (100 / s) + '%';
-            de.style.height = (100 / s) + '%';
-        }
-    }
-    window.__docklyApplyScale = apply;
-    window.__docklyNudgeScale = function(d){
-        var s = (window.__docklyScale || 1) + d;
-        if (s < 0.25) s = 0.25;
-        if (s > 3) s = 3;
-        window.__docklyScale = Math.round(s * 100) / 100;
-        apply();
-    };
-    window.addEventListener('wheel', function(e){
-        if(!e.ctrlKey) return;
-        e.preventDefault();
-        e.stopPropagation();
-        window.__docklyNudgeScale(e.deltaY < 0 ? 0.1 : -0.1);
-    }, { passive:false, capture:true });
-    window.addEventListener('keydown', function(e){
-        if(!e.ctrlKey) return;
-        if(e.key === '+' || e.key === '='){ e.preventDefault(); window.__docklyNudgeScale(0.1); }
-        else if(e.key === '-' || e.key === '_'){ e.preventDefault(); window.__docklyNudgeScale(-0.1); }
-        else if(e.key === '0'){ e.preventDefault(); window.__docklyScale = 1; apply(); }
-    }, { capture:true });
-    setInterval(apply, 500);
-})();
-";
 
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
@@ -451,65 +433,8 @@ namespace VChat
             {
                 SyncWebViewHwndToVisualBounds();
                 ApplyWebViewRoundedCorners();
-                FocusWebViewIfClicked();
             };
             _continuousSyncTimer.Start();
-        }
-
-        // Give the WebView2 HWND Win32 keyboard focus when the user clicks inside it.
-        //
-        // WebView2 is hosted in a native child HWND that paints over Avalonia. Mouse
-        // clicks (WM_LBUTTONDOWN) hit the window under the cursor regardless of focus,
-        // so buttons work. But WM_KEYDOWN (typing) and WM_MOUSEWHEEL (Ctrl+zoom) are
-        // delivered to the *focused* window — which stays the Avalonia top-level, never
-        // the WebView. The native HWND eats the click before Avalonia sees it, so we
-        // can't catch it via Avalonia's PointerPressed. Instead we poll (from the 33 Hz
-        // sync): when the left button is RELEASED over our WebView HWND, force Win32 focus
-        // onto it so keystrokes and the wheel route to the page.
-        //
-        // We act on the button-UP transition, not button-down: Chromium handles the click
-        // (focusing the DOM field, placing the caret) on the down/up it receives directly.
-        // Stealing Win32 focus mid-click (on button-down) derails that handling, which is
-        // why clicks/text-fields stop working. Doing it on release leaves the click intact
-        // and only hands keyboard focus over afterwards.
-        private bool _wasLButtonDown;
-
-        private void FocusWebViewIfClicked()
-        {
-            if (!OperatingSystem.IsWindows()) return;
-            if (_webView == null || !_webView.IsVisible) return;
-            if (SettingsOverlay?.IsVisible == true) return;
-
-            var hwnd = _webViewHwnd;
-            if (hwnd == IntPtr.Zero) { _wasLButtonDown = false; return; }
-
-            bool isLButtonDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
-
-            // Act on the transition from down to up (click finished).
-            if (!isLButtonDown && _wasLButtonDown)
-            {
-                if (GetCursorPos(out var pt))
-                {
-                    var under = WindowFromPoint(pt);
-                    if (under != IntPtr.Zero)
-                    {
-                        var walk = under;
-                        for (int i = 0; i < 12 && walk != IntPtr.Zero; i++)
-                        {
-                            if (walk == hwnd)
-                            {
-                                // Only set focus if it isn't already ours, to avoid
-                                // redundant focus churn while typing.
-                                if (GetFocus() != hwnd) SetFocus(hwnd);
-                                break;
-                            }
-                            walk = GetParent(walk);
-                        }
-                    }
-                }
-            }
-
-            _wasLButtonDown = isLButtonDown;
         }
 
         // Defer WebView2 creation until the dock has actually slid on-screen for the first
@@ -631,8 +556,8 @@ namespace VChat
                     StartContinuousSync();
                     ScheduleInitialSettings();
 
-                    try { urlProp?.SetValue(webView, new Uri(VChatUrl)); }
-                    catch (Exception ex) { ShowError($"Failed to navigate to VChat:\n{ex.InnerException?.Message ?? ex.Message}"); }
+                    try { urlProp?.SetValue(webView, new Uri(CurrentUrl)); }
+                    catch (Exception ex) { ShowError($"Failed to navigate to {CurrentUrl}:\n{ex.InnerException?.Message ?? ex.Message}"); }
 
                     // Extra: ensure WebView2 controller receives initial bounds + zoom after load.
                     Dispatcher.UIThread.Post(() =>
@@ -749,7 +674,7 @@ namespace VChat
 
         private void ShowError(string message)
         {
-            Console.WriteLine($"[VChat] {message}");
+            Console.WriteLine($"[Spotify] {message}");
             var copyBtn = new Button
             {
                 Content             = "Copy error",
@@ -817,10 +742,6 @@ namespace VChat
         private const int SWP_NOACTIVATE = 0x0010;
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-        [DllImport("user32.dll")]
-        private static extern IntPtr SetFocus(IntPtr hWnd);
-        [DllImport("user32.dll")]
-        private static extern IntPtr GetFocus();
 
         // Subscriptions to every ancestor's RenderTransformProperty (catches transform
         // replacement, e.g. the editor's StackPanel.RenderTransform = new TranslateTransform()
@@ -920,7 +841,6 @@ namespace VChat
         // operations (SetWindowPos, SetWindowRgn) target only this instance's HWND
         // instead of all children of the editor window (which breaks dual-view).
         private IntPtr _webViewHwnd = IntPtr.Zero;
-
         private bool _shiftDown = false;
         private void OnTopLevelKeyDown(object? s, Avalonia.Input.KeyEventArgs e) { if (e.Key == Avalonia.Input.Key.LeftShift || e.Key == Avalonia.Input.Key.RightShift) _shiftDown = true; }
         private void OnTopLevelKeyUp(object? s, Avalonia.Input.KeyEventArgs e)   { if (e.Key == Avalonia.Input.Key.LeftShift || e.Key == Avalonia.Input.Key.RightShift) _shiftDown = false; }
@@ -949,10 +869,17 @@ namespace VChat
         private int _lastRgnW = -1;
         private int _lastRgnH = -1;
         private int _lastRgnDiameter = -1;
-        // Mobile user agent so VChat serves the compact mobile layout.
+        // Mobile user agent so Spotify serves the compact mobile layout.
         private const string MobileUserAgent =
             "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36";
         private bool _mobileUaApplied;
+        // Latches once we've told Chromium to synthesize touch events from mouse input.
+        // The mobile UA makes Spotify's React UI bind touchstart/touchmove/touchend and ignore
+        // mouse events, so desktop mouse drags never move the volume / track-scrubber sliders.
+        // Enabling CDP touch emulation makes WebView2 repackage mouse drags as single-finger
+        // touches, which those sliders do respond to. Persists across navigations on the
+        // CoreWebView2, so it only needs to be applied once.
+        private bool _touchEmulationApplied;
         // Pending zoom retry state when the controller isn't ready yet.
         private DispatcherTimer? _zoomRetryTimer;
         private double? _pendingZoomVal;
@@ -964,6 +891,207 @@ namespace VChat
         // CoreWebView2 controller. Called from the WebView Loaded event and retried
         // until CoreWebView2 is ready, so it works even when the controller isn't
         // available immediately (e.g. in the main Docklys app).
+        // Injected into the WebView page to implement "scale-to-fit" Ctrl+scroll zoom.
+        // Instead of WebView2's built-in ZoomFactor (which REFLOWS responsive pages and trips
+        // their desktop breakpoint — widening the layout past the tile so it gets clipped at
+        // the sides), this applies a uniform CSS transform to <html>. Width/height are
+        // compensated by 1/scale so the scaled visual always fills exactly 100% of the
+        // viewport: content is never clipped at the sides in either zoom direction, and media
+        // queries still see the real (narrow) viewport so the mobile layout is preserved.
+        // The capture-phase wheel listener calls preventDefault() so WebView2's native zoom
+        // never fires. Guarded by __docklyScaleReady so repeated injection is a no-op.
+        private const string ScaleToFitScript = @"
+(function(){
+    if (window.__docklyScaleReady) return;
+    window.__docklyScaleReady = true;
+    if (typeof window.__docklyScale !== 'number') window.__docklyScale = 1;
+    function apply(){
+        var de = document.documentElement;
+        if(!de) return;
+        var s = window.__docklyScale;
+        if (s === 1){
+            de.style.transform = '';
+            de.style.transformOrigin = '';
+            de.style.width = '';
+            de.style.height = '';
+        } else {
+            de.style.transformOrigin = '0 0';
+            de.style.transform = 'scale(' + s + ')';
+            de.style.width = (100 / s) + '%';
+            de.style.height = (100 / s) + '%';
+        }
+    }
+    window.__docklyApplyScale = apply;
+    window.__docklyNudgeScale = function(d){
+        var s = (window.__docklyScale || 1) + d;
+        if (s < 0.25) s = 0.25;
+        if (s > 3) s = 3;
+        window.__docklyScale = Math.round(s * 100) / 100;
+        apply();
+    };
+    window.addEventListener('wheel', function(e){
+        if(!e.ctrlKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        window.__docklyNudgeScale(e.deltaY < 0 ? 0.1 : -0.1);
+    }, { passive:false, capture:true });
+    window.addEventListener('keydown', function(e){
+        if(!e.ctrlKey) return;
+        if(e.key === '+' || e.key === '='){ e.preventDefault(); window.__docklyNudgeScale(0.1); }
+        else if(e.key === '-' || e.key === '_'){ e.preventDefault(); window.__docklyNudgeScale(-0.1); }
+        else if(e.key === '0'){ e.preventDefault(); window.__docklyScale = 1; apply(); }
+    }, { capture:true });
+    setInterval(apply, 500);
+})();
+";
+
+        // Injected to translate mouse events to touch events so Spotify's mobile UI
+        // (volume slider, etc) responds to desktop mouse drags without the CDP
+        // gray-circle touch emulator cursor.
+        private const string MouseToTouchScript = @"
+(function(){
+    if (window.__docklyTouchEmulation) return;
+    window.__docklyTouchEmulation = true;
+    if (navigator.maxTouchPoints === 0) {
+        try { Object.defineProperty(navigator, 'maxTouchPoints', { value: 1 }); } catch(e){}
+    }
+    let isMouseDown = false;
+    let touchTarget = null;
+    function dispatchTouch(type, e, target) {
+        if (!target) return;
+        const touch = new Touch({
+            identifier: 0,
+            target: target,
+            clientX: e.clientX,
+            clientY: e.clientY,
+            pageX: e.pageX,
+            pageY: e.pageY,
+            screenX: e.screenX,
+            screenY: e.screenY,
+            radiusX: 1,
+            radiusY: 1,
+            rotationAngle: 0,
+            force: 1
+        });
+        const event = new TouchEvent(type, {
+            touches: type === 'touchend' ? [] : [touch],
+            targetTouches: type === 'touchend' ? [] : [touch],
+            changedTouches: [touch],
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            view: window
+        });
+        target.dispatchEvent(event);
+    }
+    window.addEventListener('mousedown', function(e) {
+        if (e.button !== 0) return;
+        isMouseDown = true;
+        touchTarget = e.target;
+        dispatchTouch('touchstart', e, touchTarget);
+    }, true);
+    window.addEventListener('mousemove', function(e) {
+        if (!isMouseDown) return;
+        dispatchTouch('touchmove', e, touchTarget);
+    }, true);
+    window.addEventListener('mouseup', function(e) {
+        if (!isMouseDown) return;
+        dispatchTouch('touchend', e, touchTarget);
+        isMouseDown = false;
+        touchTarget = null;
+    }, true);
+})();
+";
+
+        // SPOTIFY-ONLY: suppress Spotify's 'You are listening on <device>' handoff modal (green
+        // Continue button + 'Listen on This Phone' on a white rounded card over a darkened,
+        // click-blocking backdrop). Rather than clicking it, detect it by text (role=dialog, or a
+        // Continue button inside a short container that also says 'listening on' / 'this phone'),
+        // then hide its full-viewport overlay and restore page interactivity. Installed at
+        // document-creation with a MutationObserver (+400ms backstop) so it vanishes as soon as it
+        // appears. Hidden via display:none !important (not removed) to avoid breaking Spotify React.
+        private const string SuppressDeviceModalScript = @"
+(function(){
+    if (window.__docklyNoHandoff) return;
+    window.__docklyNoHandoff = true;
+    function isHandoff(el){
+        if (!el) return false;
+        var t = (el.textContent || '').toLowerCase();
+        if (!t || t.length > 600) return false;
+        return t.indexOf('continue') !== -1 && (t.indexOf('listening on') !== -1 || t.indexOf('this phone') !== -1);
+    }
+    function hide(el){
+        if (!el) return;
+        try { el.style.setProperty('display','none','important'); } catch(e){}
+        try { el.style.setProperty('pointer-events','none','important'); } catch(e){}
+        try { el.style.setProperty('opacity','0','important'); } catch(e){}
+    }
+    function neutralize(){
+        var found = null;
+        var dl = document.querySelectorAll('[role=dialog],[aria-modal=true]');
+        for (var i=0;i<dl.length;i++){ if (isHandoff(dl[i])){ found = dl[i]; break; } }
+        if (!found){
+            var bs = document.querySelectorAll('button,[role=button]');
+            for (var j=0;j<bs.length && !found;j++){
+                if ((bs[j].textContent||'').toLowerCase().indexOf('continue') !== -1){
+                    var p = bs[j];
+                    for (var k=0;k<10 && p;k++){ if (isHandoff(p)){ found = p; break; } p = p.parentElement; }
+                }
+            }
+        }
+        if (!found) return;
+        var overlay = found, node = found;
+        for (var d2=0; d2<6 && node && node.parentElement; d2++){
+            var par = node.parentElement;
+            if (par === document.body || par === document.documentElement) break;
+            var cs = window.getComputedStyle(par);
+            if (cs.position === 'fixed' || cs.position === 'absolute'){
+                var r = par.getBoundingClientRect();
+                if (r.width >= window.innerWidth*0.85 && r.height >= window.innerHeight*0.85){ overlay = par; break; }
+            }
+            node = par;
+        }
+        hide(overlay);
+        if (overlay !== found) hide(found);
+        try { document.documentElement.style.overflow=''; document.body.style.overflow=''; document.body.style.removeProperty('pointer-events'); } catch(e){}
+    }
+    var pending = false;
+    function schedule(){ if (pending) return; pending = true; setTimeout(function(){ pending = false; try { neutralize(); } catch(e){} }, 150); }
+    if (document.readyState !== 'loading') neutralize();
+    window.addEventListener('load', neutralize);
+    try { new MutationObserver(schedule).observe(document.documentElement, { childList:true, subtree:true }); } catch(e){}
+    setInterval(function(){ try { neutralize(); } catch(e){} }, 400);
+})();
+";
+
+        // Executes arbitrary JS in the WebView2 page via reflection. Used to drive the
+        // in-page scale-to-fit zoom from Avalonia-level input when the wheel event is
+        // captured by the Avalonia window instead of the native WebView HWND.
+        private void RunCoreScript(string js)
+        {
+            if (_webView == null) return;
+            try
+            {
+                _platformWebViewFieldCache ??= _webView.GetType().GetField(
+                    "_platformWebView", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (_platformWebViewFieldCache == null) return;
+                var platformWebView = _platformWebViewFieldCache.GetValue(_webView);
+                if (platformWebView == null) return;
+                var platformType = platformWebView.GetType();
+                if (_coreControllerPropCache == null || _coreControllerPropCache.DeclaringType != platformType)
+                    _coreControllerPropCache = platformType.GetProperty(
+                        "_coreWebView2Controller", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (_coreControllerPropCache == null) return;
+                var controller = _coreControllerPropCache.GetValue(platformWebView);
+                if (controller == null) return;
+                var core = controller.GetType().GetProperty("CoreWebView2")?.GetValue(controller);
+                if (core == null) return;
+                var exec = core.GetType().GetMethod("ExecuteScriptAsync", new[] { typeof(string) });
+                exec?.Invoke(core, new object[] { js });
+            }
+            catch { }
+        }
+
         private void ScheduleInitialSettings()
         {
             _mobileUaApplied = false;
@@ -1006,21 +1134,19 @@ namespace VChat
 
                 var coreType = core.GetType();
 
+                // Make desktop mouse drags drive Spotify's touch-only mobile sliders
+                // (volume + track scrubber). Safe to attempt every tick; guarded internally.
+                TryEnableTouchEmulation(core, coreType);
+
                 if (!_mobileUaApplied)
                 {
                     try
                     {
-                        // IMPORTANT — VChat differs from Spotify here. Spotify serves a
-                        // different page per user-agent, so a mobile UA forces its mobile
-                        // layout and ZoomFactor is purely cosmetic. VChat's site serves
-                        // IDENTICAL html regardless of UA and decides mobile-vs-desktop
-                        // CLIENT-SIDE from the CSS viewport width. The WebView2 CSS viewport
-                        // width ≈ controllerWidthPx / ZoomFactor, so zooming OUT (0.5) widens
-                        // the viewport (~460px) and trips the desktop breakpoint. To keep the
-                        // mobile layout the viewport must stay narrow → leave zoom at 1.0.
+                        // Set initial page zoom to 50% (5 Ctrl+scroll-down notches: 100→90→80→75→67→50).
+                        // Done once here; the sync timer never touches ZoomFactor so Ctrl+scroll works freely.
                         var zoomProp = controllerType.GetProperty("ZoomFactor");
                         if (zoomProp?.PropertyType == typeof(double))
-                            try { zoomProp.SetValue(controller, 1.0); } catch { }
+                            try { zoomProp.SetValue(controller, 0.5); } catch { }
 
                         var settingsProp = coreType.GetProperty("Settings");
                         var settings = settingsProp?.GetValue(core);
@@ -1035,28 +1161,20 @@ namespace VChat
                             }
                             catch { }
 
-                            // Mobile UA is a best-effort hint only (this site ignores it for
-                            // layout, but some PWAs key feature detection off it).
                             var uaProp = settings.GetType().GetProperty("UserAgent");
                             if (uaProp != null && !_mobileUaApplied)
                             {
-                                try { uaProp.SetValue(settings, MobileUserAgent); } catch { }
-
-                                // Ensure Ctrl+scroll zoom is not suppressed by the host.
-                                var zoomEnabledProp = settings.GetType().GetProperty("IsZoomControlEnabled");
-                                if (zoomEnabledProp?.PropertyType == typeof(bool))
-                                    try { zoomEnabledProp.SetValue(settings, true); } catch { }
-
+                                uaProp.SetValue(settings, MobileUserAgent);
                                 _mobileUaApplied = true;
 
-                                // Hide scrollbars persistently. The embedded site is an SPA that
-                                // rewrites <head>/<body> on navigation, wiping any injected
-                                // <style>. A setInterval re-appends our style every 500ms so the
-                                // hidden-scrollbar CSS survives DOM rewrites. Registered via
-                                // AddScriptToExecuteOnDocumentCreatedAsync so it runs for every
-                                // future document. NOTE: we only hide scrollbars (no
-                                // overflow:hidden/position:fixed) so the page still scrolls and
-                                // zooming does not clip content.
+                                // Hide scrollbars persistently. Spotify is a React SPA that
+                                // rewrites <head>/<body> on navigation (e.g. opening settings),
+                                // wiping any injected <style>. A setInterval re-appends our style
+                                // every 500ms so the hidden-scrollbar CSS survives DOM rewrites.
+                                // Registered via AddScriptToExecuteOnDocumentCreatedAsync so it
+                                // runs for every future document. NOTE: we only hide scrollbars
+                                // (no overflow:hidden/position:fixed) so the page still scrolls
+                                // and zooming does not clip content.
                                 const string persistentScript = @"
 (function(){
     const css = '* { scrollbar-width: none !important; -ms-overflow-style: none !important; }'
@@ -1080,13 +1198,12 @@ namespace VChat
                                     new[] { typeof(string) });
                                 addScript?.Invoke(core, new object[] { persistentScript });
                                 addScript?.Invoke(core, new object[] { ScaleToFitScript });
+                                addScript?.Invoke(core, new object[] { MouseToTouchScript });
+                                addScript?.Invoke(core, new object[] { SuppressDeviceModalScript });
 
-                                // Authoritative navigation. The Url-property set in the Loaded
-                                // handler can be dropped when it fires before CoreWebView2 is
-                                // initialized, leaving a blank/black surface — so navigate here
-                                // once the core is actually ready (this runs on the retry loop).
+                                // Navigate with the new UA.
                                 var navigateMethod = coreType.GetMethod("Navigate", new[] { typeof(string) });
-                                navigateMethod?.Invoke(core, new object[] { VChatUrl });
+                                navigateMethod?.Invoke(core, new object[] { CurrentUrl });
                             }
                         }
                     }
@@ -1117,12 +1234,21 @@ namespace VChat
                     var execScript = coreType.GetMethod("ExecuteScriptAsync", new[] { typeof(string) });
                     execScript?.Invoke(core, new object[] { liveScript });
                     execScript?.Invoke(core, new object[] { ScaleToFitScript });
+                    execScript?.Invoke(core, new object[] { MouseToTouchScript });
                 }
                 catch { }
 
                 return _mobileUaApplied;
             }
             catch { return false; }
+        }
+
+        // Issue the Chromium DevTools Protocol commands that make WebView2 translate desktop
+        // mouse input into touch events. Disabled to hide the gray cursor circle;
+        // interaction is now handled via MouseToTouchScript in the DOM.
+        private void TryEnableTouchEmulation(object core, Type coreType)
+        {
+            _touchEmulationApplied = true;
         }
 
         private void StartZoomRetry(double zoomVal, int w, int h)
@@ -1263,7 +1389,7 @@ namespace VChat
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[VChat] ForceWebView2Repositioning failed: {ex.Message}");
+                Console.WriteLine($"[Spotify] ForceWebView2Repositioning failed: {ex.Message}");
                 return false;
             }
         }
@@ -1357,7 +1483,7 @@ namespace VChat
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[VChat] ApplyWebViewRoundedCorners failed: {ex.Message}");
+                Console.WriteLine($"[Spotify] ApplyWebViewRoundedCorners failed: {ex.Message}");
             }
         }
 
@@ -1368,9 +1494,6 @@ namespace VChat
             int w = (visibleWidth > 0 && visibleWidth < r.Right - r.Left) ? visibleWidth : (r.Right - r.Left);
             int h = (visibleHeight > 0 && visibleHeight < r.Bottom - r.Top) ? visibleHeight : (r.Bottom - r.Top);
             if (w <= 50 || h <= 50) return;
-            // NOTE: this is re-applied every sync frame on purpose. SetWindowRgn(bRedraw:true)
-            // keeps forcing the WebView2 DComp surface to repaint; caching it to fire only
-            // once leaves the surface black. Do not "optimize" this without verifying.
             IntPtr rgn = CreateRoundRectRgn(0, 0, w + 1, h + 1, diameter, diameter);
             SetWindowRgn(hwnd, rgn, true);
         }
@@ -1385,7 +1508,7 @@ namespace VChat
         //      NativeControlHost implementation skips ancestor transforms).
         private void ForceWebViewRelayout()
         {
-            Console.WriteLine("[VChat] ForceWebViewRelayout() called");
+            Console.WriteLine("[Spotify] ForceWebViewRelayout() called");
             if (_webView == null) return;
 
             var topLevel = TopLevel.GetTopLevel(_webView);
@@ -1411,7 +1534,7 @@ namespace VChat
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[VChat] ForceWebViewRelayout handled exception: {ex.Message}");
+                Console.WriteLine($"[Spotify] ForceWebViewRelayout handled exception: {ex.Message}");
             }
 
             // Belt-and-suspenders: also drive the HWND + WebView2 controller bounds
@@ -1438,7 +1561,7 @@ namespace VChat
             var local = _webView.Bounds;
             if (local.Width <= 0 || local.Height <= 0) return;
 
-            DebugLog($"[VChat] SyncWebViewHwndToVisualBounds: localBounds={local.Width}x{local.Height}");
+            DebugLog($"[Spotify] SyncWebViewHwndToVisualBounds: localBounds={local.Width}x{local.Height}");
 
             // TransformToVisual returns local->topLevel excluding the TopLevel's own RenderTransform.
             // Compose it after (right-multiply) so the full local→visual pipeline is correct.
@@ -1474,7 +1597,7 @@ namespace VChat
             var visualRect = new Rect(0, 0, local.Width, local.Height).TransformToAABB(composedMatrix);
             var scaling = topLevel.RenderScaling;
 
-            // Apply WebViewPadding (fixed gap on all sides). Scale the padding by 
+            // Apply WebViewPadding (fixed gap on all sides). Scale the padding by
             // visualScale so the gap remains proportional to the module's zoomed size.
             double pad = WebViewPadding * scaling * visualScale;
             int x = (int)(visualRect.X * scaling + pad);
@@ -1483,7 +1606,7 @@ namespace VChat
             int h = Math.Max(1, (int)(visualRect.Height * scaling - pad * 2));
 
             // NOTE: we no longer extend the HWND past the visible area. The old trick made
-            // the HWND 15px wider/taller so the native scrollbar would render in the strip
+            // the HWND 15px wider/taller so the native scrollbars would render in the strip
             // that SetWindowRgn then clipped away. But the injected CSS already hides the
             // scrollbars, so there are none to push off-screen — the page just lays out its
             // content across the extra 15px, which the clip then ate (content cut off on the
@@ -1499,6 +1622,8 @@ namespace VChat
             try
             {
                 var ourHwnd = TryGetWebViewHwnd();
+                DebugLog($"[Spotify] TryGetWebViewHwnd returned {ourHwnd}");
+                DebugLog($"[Spotify] visualRect (shrunk)={x},{y},{w},{h} renderScaling={scaling}");
 
                 if (ourHwnd != IntPtr.Zero)
                 {
@@ -1516,16 +1641,16 @@ namespace VChat
                     catch { /* ignore */ }
 
                     // Position the outer window (the one whose origin is in TopLevel coords).
-                    // Use wExt/hExt so the scrollbar renders off the edge (clipped by SetWindowRgn).
-                    // SetWindowPos to an unchanged rect is a Windows no-op (no repaint), so this
-                    // is safe to call every frame; the actual flicker source (SetWindowRgn with
-                    // bRedraw) is gated separately in ApplyRoundedRgn.
+                    // Use wExt/hExt so the scrollbars render off the edge (clipped by SetWindowRgn).
                     SetWindowPos(outerHwnd, IntPtr.Zero, targetX, y, wExt, hExt, SWP_NOZORDER | SWP_NOACTIVATE);
 
                     // If we moved a wrapper (outer != inner), ensure the inner WebView HWND
                     // fills the moved container so the DComp surface is at 0,0..wExt,hExt.
                     if (outerHwnd != ourHwnd)
+                    {
                         SetWindowPos(ourHwnd, IntPtr.Zero, 0, 0, wExt, hExt, SWP_NOZORDER | SWP_NOACTIVATE);
+                        DebugLog($"[Spotify] Positioned outerHwnd={outerHwnd} innerHwnd={ourHwnd} -> x={targetX},y={y},w={wExt},h={hExt}");
+                    }
                 }
                 // else: our HWND isn't discovered yet. We must NOT move foreign child windows
                 // (the old fallback moved every >50px child, which displaces the settings
@@ -1535,11 +1660,31 @@ namespace VChat
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[VChat] SyncWebViewHwndToVisualBounds failed: {ex.Message}");
+                Console.WriteLine($"[Spotify] SyncWebViewHwndToVisualBounds failed: {ex.Message}");
             }
 
-            // HWND is now at the correct position — fill the DComp surface from (0,0).
+            // HWND is now at the correct slid position — DComp surface fills it from (0,0).
+            // Compute visual scale using the transform matrix to be robust to rotations/shear.
+            visualScale = 1.0;
+            try
+            {
+                // Use the composed matrix (local -> topLevel including TopLevel.RenderTransform)
+                var m = composedMatrix;
+                 // Transform unit vectors to measure scale along X and Y
+                 var p0 = m.Transform(new Point(0, 0));
+                 var p1 = m.Transform(new Point(1, 0));
+                 var p2 = m.Transform(new Point(0, 1));
+                 double scaleX = Math.Sqrt(Math.Pow(p1.X - p0.X, 2) + Math.Pow(p1.Y - p0.Y, 2));
+                 double scaleY = Math.Sqrt(Math.Pow(p2.X - p0.X, 2) + Math.Pow(p2.Y - p0.Y, 2));
+                 if (double.IsFinite(scaleX) && double.IsFinite(scaleY) && scaleX > 0 && scaleY > 0)
+                     visualScale = (scaleX + scaleY) / 2.0;
+            }
+            catch { visualScale = 1.0; }
+
+            DebugLog($"[Spotify] computed visualScale={visualScale}");
+
             ForceWebView2RepositioningWithSize(0, wExt, hExt);
+
         }
 
         // Same as ForceWebView2Repositioning but with explicit width/height so we can
@@ -1589,7 +1734,7 @@ namespace VChat
                  var controllerType = controller.GetType();
 
                  var rect = new System.Drawing.Rectangle(physicalOffsetX, 0, w, h);
-                DebugLog($"[VChat] ForceWebView2RepositioningWithSize rect={{X={rect.X},Y={rect.Y},W={rect.Width},H={rect.Height}}} zoom={zoom}");
+                DebugLog($"[Spotify] ForceWebView2RepositioningWithSize rect={{X={rect.X},Y={rect.Y},W={rect.Width},H={rect.Height}}} zoom={zoom}");
                  _controllerBoundsPropCache    ??= controllerType.GetProperty("Bounds");
                  _controllerBoundsPropCache?.SetValue(controller, rect);
 
@@ -1602,7 +1747,7 @@ namespace VChat
              }
              catch (Exception ex)
              {
-                 Console.WriteLine($"[VChat] ForceWebView2RepositioningWithSize failed: {ex.Message}");
+                 Console.WriteLine($"[Spotify] ForceWebView2RepositioningWithSize failed: {ex.Message}");
                  return false;
              }
          }
@@ -1697,7 +1842,7 @@ namespace VChat
                     var val = parentField.GetValue(controller);
                     if (val is IntPtr hwnd && hwnd != IntPtr.Zero)
                     {
-                        Console.WriteLine($"[VChat] Discovered WebView HWND via field ParentWindow: {hwnd}");
+                        Console.WriteLine($"[Spotify] Discovered WebView HWND via field ParentWindow: {hwnd}");
                         if (_webViewHwnd != hwnd) _lastAppliedVisualZoom = double.NaN;
                         _webViewHwnd = hwnd;
                         return hwnd;
@@ -1713,7 +1858,7 @@ namespace VChat
                         var val = parentProp.GetValue(controller);
                         if (val is IntPtr hwndProp && hwndProp != IntPtr.Zero)
                         {
-                            Console.WriteLine($"[VChat] Discovered WebView HWND via property ParentWindow: {hwndProp}");
+                            Console.WriteLine($"[Spotify] Discovered WebView HWND via property ParentWindow: {hwndProp}");
                             if (_webViewHwnd != hwndProp) _lastAppliedVisualZoom = double.NaN;
                             _webViewHwnd = hwndProp;
                             return hwndProp;
@@ -1722,7 +1867,7 @@ namespace VChat
                         if (val is long l && l != 0)
                         {
                             var h = new IntPtr(l);
-                            Console.WriteLine($"[VChat] Discovered WebView HWND via property ParentWindow (long): {h}");
+                            Console.WriteLine($"[Spotify] Discovered WebView HWND via property ParentWindow (long): {h}");
                             if (_webViewHwnd != h) _lastAppliedVisualZoom = double.NaN;
                             _webViewHwnd = h;
                             return h;
@@ -1730,7 +1875,7 @@ namespace VChat
                         if (val is int i && i != 0)
                         {
                             var h = new IntPtr(i);
-                            Console.WriteLine($"[VChat] Discovered WebView HWND via property ParentWindow (int): {h}");
+                            Console.WriteLine($"[Spotify] Discovered WebView HWND via property ParentWindow (int): {h}");
                             if (_webViewHwnd != h) _lastAppliedVisualZoom = double.NaN;
                             _webViewHwnd = h;
                             return h;
@@ -1755,7 +1900,7 @@ namespace VChat
 
                             if (cand != IntPtr.Zero)
                             {
-                                Console.WriteLine($"[VChat] Discovered WebView HWND via field {f.Name}: {cand}");
+                                Console.WriteLine($"[Spotify] Discovered WebView HWND via field {f.Name}: {cand}");
                                 if (_webViewHwnd != cand) _lastAppliedVisualZoom = double.NaN;
                                 _webViewHwnd = cand;
                                 return cand;
@@ -1781,7 +1926,7 @@ namespace VChat
 
                             if (cand != IntPtr.Zero)
                             {
-                                Console.WriteLine($"[VChat] Discovered WebView HWND via property {p.Name}: {cand}");
+                                Console.WriteLine($"[Spotify] Discovered WebView HWND via property {p.Name}: {cand}");
                                 if (_webViewHwnd != cand) _lastAppliedVisualZoom = double.NaN;
                                 _webViewHwnd = cand;
                                 return cand;
@@ -1791,12 +1936,12 @@ namespace VChat
                     catch { }
                 }
 
-                Console.WriteLine("[VChat] ParentWindow field missing or zero");
+                Console.WriteLine("[Spotify] ParentWindow field missing or zero");
                 return IntPtr.Zero;
              }
              catch (Exception ex)
              {
-                 Console.WriteLine($"[VChat] TryGetWebViewHwnd failed: {ex.Message}");
+                 Console.WriteLine($"[Spotify] TryGetWebViewHwnd failed: {ex.Message}");
                  return IntPtr.Zero;
              }
          }
@@ -1818,20 +1963,6 @@ namespace VChat
 
         [DllImport("gdi32.dll")]
         private static extern IntPtr CreateRoundRectRgn(int nLeftRect, int nTopRect, int nRightRect, int nBottomRect, int nWidthEllipse, int nHeightEllipse);
-
-        [DllImport("user32.dll")]
-        private static extern short GetAsyncKeyState(int vKey);
-
-        [DllImport("user32.dll")]
-        private static extern bool GetCursorPos(out POINT lpPoint);
-
-        [DllImport("user32.dll")]
-        private static extern IntPtr WindowFromPoint(POINT p);
-
-        private const int VK_LBUTTON = 0x01;
-
-        [StructLayout(LayoutKind.Sequential)]
-        private struct POINT { public int X; public int Y; }
 
         [StructLayout(LayoutKind.Sequential)]
         private struct RECT

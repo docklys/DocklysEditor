@@ -126,10 +126,29 @@ public partial class MainWindow
         return null;
     }
 
+    // A folder qualifies as a clonable module template only if its .csproj is
+    // an actual Dockly module project — a class library that references
+    // Docklys.ModuleContracts. The "Run*" host apps (RunPattern/RunPlugin/
+    // RunTheme) are WinExe projects that don't reference the contracts, so
+    // they're excluded and never offered in the template picker.
+    private static bool IsModuleProject(string csprojPath)
+    {
+        try
+        {
+            return File.ReadAllText(csprojPath)
+                       .Contains("Docklys.ModuleContracts", StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[CreateModule] could not read {csprojPath}: {ex.Message}");
+            return false;
+        }
+    }
+
     // Local-registry validation only: collisions against sibling project
     // folders and against any DLL already deployed to Dockly's
     // CustomModules. The server-side registry at
-    // registry.docklys.qwqc.dedyn.io is checked separately at submission
+    // registry.docklys.qwqc.de is checked separately at submission
     // time.
     //
     // `allowExistingFolder` is for the rename flow: a case-only rename
@@ -481,7 +500,11 @@ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>";
     private async Task<string?> PromptForTemplateName(string solutionDir)
     {
         // Collect every sibling project folder that has a matching .csproj,
-        // using the same exclusion list as the catalog scanner.
+        // using the same exclusion list as the catalog scanner, and only keep
+        // folders that are actually Dockly *modules* — not the "Run*" host
+        // apps (RunPattern/RunPlugin/RunTheme) that also sit here with a
+        // matching .csproj. Cloning one of those as a "template" makes no
+        // sense, so they're filtered out.
         var names = new List<string>();
         foreach (var folder in Directory.EnumerateDirectories(solutionDir)
                                         .OrderBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase))
@@ -489,7 +512,9 @@ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>";
             var folderName = Path.GetFileName(folder);
             if (NonModuleFolders.Contains(folderName)) continue;
             if (folderName.StartsWith(".", StringComparison.Ordinal)) continue;
-            if (!File.Exists(Path.Combine(folder, folderName + ".csproj"))) continue;
+            var csproj = Path.Combine(folder, folderName + ".csproj");
+            if (!File.Exists(csproj)) continue;
+            if (!IsModuleProject(csproj)) continue;
             names.Add(folderName);
         }
 

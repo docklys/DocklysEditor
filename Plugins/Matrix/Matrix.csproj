@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AssemblyName>Matrix</AssemblyName>
+        <RootNamespace>DocklysPlugins.Matrix</RootNamespace>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Avalonia" Version="11.3.1" />
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj" />
+    </ItemGroup>
+    <PropertyGroup>
+        <OutputPluginDir Condition=" '$(SolutionDir)' == '' ">$(MSBuildProjectDirectory)\..\..\OutputPluginDLL</OutputPluginDir>
+        <OutputPluginDir Condition=" '$(SolutionDir)' != '' ">$(SolutionDir)OutputPluginDLL</OutputPluginDir>
+    </PropertyGroup>
+    <Target Name="CopyPluginDllAfterBuild" AfterTargets="Build">
+        <MakeDir Directories="$(OutputPluginDir)" Condition="!Exists('$(OutputPluginDir)')" />
+        <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(OutputPluginDir)" />
+    </Target>
+</Project>
