@@ -46,6 +46,14 @@ namespace spotify
 
             Console.WriteLine($"[Spotify] SetTileSize called -> width={width},height={height}, webViewCreated={_webViewCreated}, webViewIsNull={_webView==null}, cachedHwnd={_webViewHwnd}");
 
+            // The code below is a WebView2/HWND recovery path. On Linux the WebKitGTK view is
+            // hosted in an X11 child window, and forcing UpdateLayout here makes Avalonia reset
+            // that child to Spotify's natural 230x350 size. The Dockly host owns the Linux
+            // transform-aware X11 sizing, including settings-preview tiles, so competing with it
+            // from the module causes the oversized flash while the settings splitter moves.
+            if (!OperatingSystem.IsWindows())
+                return;
+
             // Host requested a tile-size change — aggressively force the WebView to
             // relayout and resync immediately so the new size is visible without
             // reloading the module.
@@ -1430,6 +1438,11 @@ namespace spotify
         //      NativeControlHost implementation skips ancestor transforms).
         private void ForceWebViewRelayout()
         {
+            // This method drives Win32/WebView2 recovery. On Linux it only causes Avalonia to
+            // overwrite the X11 host's transform-aware rectangle with the module's natural size.
+            // Dockly's X11WebViewOverlaySync is the single geometry owner there.
+            if (!OperatingSystem.IsWindows()) return;
+
             Console.WriteLine("[Spotify] ForceWebViewRelayout() called");
             if (_webView == null) return;
 
@@ -1896,4 +1909,3 @@ namespace spotify
         }
     }
 }
-
