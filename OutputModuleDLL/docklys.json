@@ -1,7 +1,7 @@
 {
-  "name": "Comms",
+  "name": "DefaultModule",
   "type": "module",
-  "license": "MIT",
+  "license": "None",
   "description": "",
   "version": "1.0",
   "sizeBytes": 17408,
