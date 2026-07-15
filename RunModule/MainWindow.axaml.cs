@@ -37,6 +37,9 @@ public partial class MainWindow : Window
     {
         InitializeTheme();
         InitializeSkinComboBox();
+#if LINUX
+        X11WebViewLayoutSync.Start(this);
+#endif
         Console.WriteLine(typeof(IModule.FontDummy).Assembly.GetName().Name);
 
         // Ensure Zoom label shows current slider value on load. The actual

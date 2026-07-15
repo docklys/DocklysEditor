@@ -89,7 +89,7 @@ public partial class MainWindow
                     if (IsModuleType(t)) { found = t; break; }
                 }
 
-                if (found != null)
+                if (found != null && IsSupportedByCurrentPlatform(found))
                 {
                     _catalog.Add(new ModuleEntry(folderName, csproj, dll, found, ctx));
                     ctx = null; // ownership transferred to catalog entry
@@ -297,4 +297,32 @@ public partial class MainWindow
         t is { IsAbstract: false, IsClass: true }
         && typeof(Control).IsAssignableFrom(t)
         && t.GetInterfaces().Any(i => i.Name == nameof(IModule));
+
+    private static bool IsSupportedByCurrentPlatform(Type moduleType)
+    {
+        try
+        {
+            var instance = Activator.CreateInstance(moduleType);
+            var platforms = moduleType.GetProperty("SupportedPlatforms")?.GetValue(instance)
+                as IEnumerable<string>;
+            if (platforms == null)
+                return true;
+
+            var platform = OperatingSystem.IsWindows() ? "Windows"
+                : OperatingSystem.IsMacOS() ? "Mac"
+                : "Linux";
+            bool supported = platforms.Any(item =>
+                string.Equals(item, platform, StringComparison.OrdinalIgnoreCase));
+            if (!supported)
+                Debug.WriteLine($"[Catalog] Skipping {moduleType.FullName}: unsupported on {platform}.");
+            return supported;
+        }
+        catch (Exception ex)
+        {
+            // A module that cannot even be constructed for metadata would become an error panel
+            // later. Keep it out of the carousel and preserve the actionable reason in debug log.
+            Debug.WriteLine($"[Catalog] Skipping {moduleType.FullName}: metadata construction failed: {ex}");
+            return false;
+        }
+    }
 }

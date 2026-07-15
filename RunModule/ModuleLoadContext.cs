@@ -1,4 +1,6 @@
+using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
 
@@ -6,11 +8,13 @@ namespace RunModule;
 
 // Isolated, collectible ALC for one module DLL.
 //
-// All dependency resolution returns null so the runtime falls through to
-// AssemblyLoadContext.Default — Avalonia, Docklys.ModuleContracts, NAudio,
-// etc. all use the same type identities as the host. Only the module DLL
-// itself is loaded into this context, via LoadFromStream so the file on disk
-// is never locked.
+// Avalonia and Docklys.ModuleContracts deliberately come from the default
+// context so a loaded module has the same Control and IModule type identities
+// as the editor. Other dependencies are resolved relative to the module's
+// build output. Returning null for every dependency used to work only for
+// modules already referenced by RunModule; independently-built modules then
+// failed during construction or rendered blank when one of their private
+// dependencies could not be found.
 //
 // isCollectible=true means Unload() can reclaim the module's types from
 // memory, which is what makes hot-reload work: unload the old context, create
@@ -18,10 +22,12 @@ namespace RunModule;
 internal sealed class ModuleLoadContext : AssemblyLoadContext
 {
     private readonly string _dllPath;
+    private readonly AssemblyDependencyResolver _resolver;
 
     internal ModuleLoadContext(string dllPath) : base(isCollectible: true)
     {
         _dllPath = dllPath;
+        _resolver = new AssemblyDependencyResolver(dllPath);
     }
 
     internal Assembly LoadModule()
@@ -30,5 +36,22 @@ internal sealed class ModuleLoadContext : AssemblyLoadContext
         return LoadFromStream(ms);
     }
 
-    protected override Assembly? Load(AssemblyName assemblyName) => null;
+    protected override Assembly? Load(AssemblyName assemblyName)
+    {
+        if (IsSharedWithEditor(assemblyName.Name))
+            return AssemblyLoadContext.Default.Assemblies.FirstOrDefault(assembly =>
+                string.Equals(assembly.GetName().Name, assemblyName.Name,
+                    StringComparison.OrdinalIgnoreCase));
+
+        var path = _resolver.ResolveAssemblyToPath(assemblyName);
+        return path == null ? null : LoadFromAssemblyPath(path);
+    }
+
+    private static bool IsSharedWithEditor(string? assemblyName) =>
+        assemblyName != null &&
+        (assemblyName.Equals("Docklys.ModuleContracts", StringComparison.OrdinalIgnoreCase)
+         || assemblyName.Equals("Avalonia", StringComparison.OrdinalIgnoreCase)
+         || assemblyName.StartsWith("Avalonia.", StringComparison.OrdinalIgnoreCase)
+         || assemblyName.Equals("WebView.Avalonia", StringComparison.OrdinalIgnoreCase)
+         || assemblyName.StartsWith("WebViewCore", StringComparison.OrdinalIgnoreCase));
 }

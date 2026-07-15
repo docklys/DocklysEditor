@@ -1,9 +1,9 @@
 {
-  "name": "DefaultModule",
+  "name": "spotify",
   "type": "module",
   "license": "None",
-  "description": "",
+  "description": "A Docklys module: spotify",
   "version": "1.0",
-  "sizeBytes": 17408,
-  "githubRepo": ""
+  "sizeBytes": 89600,
+  "githubRepo": "dcqwqc/Docklys.spotify"
 }
