@@ -1,9 +1,9 @@
 {
-  "name": "Comms",
+  "name": "Webview",
   "type": "module",
-  "license": "MIT",
-  "description": "",
+  "license": "None",
+  "description": "A Docklys module: Webview",
   "version": "1.0",
-  "sizeBytes": 45056,
-  "githubRepo": ""
+  "sizeBytes": 91136,
+  "githubRepo": "dcqwqc/Docklys.Webview"
 }
