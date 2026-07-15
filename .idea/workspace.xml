@@ -3,8 +3,20 @@
   <component name="AutoImportSettings">
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
+  <component name="CMakeProjectFlavorService">
+    <option name="flavorId" value="CMakePlainProjectFlavor" />
+  </component>
+  <component name="CMakeSettings">
+    <configurations />
+  </component>
   <component name="ChangeListManager">
-    <list default="true" id="b78fc96d-226b-4724-a21b-44efa3282db3" name="Changes" comment="" />
+    <list default="true" id="b78fc96d-226b-4724-a21b-44efa3282db3" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/OutputModuleDLL/DefaultModule.dll" beforeDir="false" afterPath="$PROJECT_DIR$/OutputModuleDLL/DefaultModule.dll" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/OutputModuleDLL/VChat.dll" beforeDir="false" afterPath="$PROJECT_DIR$/OutputModuleDLL/VChat.dll" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/OutputModuleDLL/VolumeMixer.dll" beforeDir="false" afterPath="$PROJECT_DIR$/OutputModuleDLL/VolumeMixer.dll" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/OutputModuleDLL/spotify.dll" beforeDir="false" afterPath="$PROJECT_DIR$/OutputModuleDLL/spotify.dll" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -23,18 +35,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "dcqwqc"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;dcqwqc&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "https://github.com/docklys/DocklysEditor.git",
-    "accountId": "947e0344-3594-44d3-addb-40d2b41511d5"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/docklys/DocklysEditor.git&quot;,
+    &quot;accountId&quot;: &quot;947e0344-3594-44d3-addb-40d2b41511d5&quot;
   }
-}]]></component>
+}</component>
   <component name="HighlightingSettingsPerFile">
     <setting file="file://$PROJECT_DIR$/DefaultModule/DefaultModule.axaml.cs" root0="SKIP_HIGHLIGHTING" />
     <setting file="file://$PROJECT_DIR$/RunModule/App.axaml.cs" root0="SKIP_HIGHLIGHTING" />
@@ -56,6 +68,7 @@
   "keyToString": {
     ".NET Executable.RunModule.executor": "Run",
     ".NET Executable.Unnamed.executor": "Run",
+    ".NET Project.Docklys Module Editor.executor": "Run",
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "RunOnceActivity.MCP Project settings loaded": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
@@ -75,7 +88,7 @@
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "project.scopes",
+    "settings.editor.selected.configurable": "project.propVCSSupport.DirectoryMappings",
     "to.speed.mode.migration.done": "true",
     "vue.rearranger.settings.migration": "true"
   }
@@ -93,6 +106,7 @@
       <workItem from="1761012573233" duration="19000" />
       <workItem from="1761012681519" duration="33000" />
       <workItem from="1784138659262" duration="27000" />
+      <workItem from="1784144806664" duration="1216000" />
     </task>
     <servers />
   </component>
