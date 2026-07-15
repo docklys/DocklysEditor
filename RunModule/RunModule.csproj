@@ -10,6 +10,19 @@
         <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     </PropertyGroup>
 
+    <!-- Platform-specific constants, matching Dockly's own csproj. Without these the editor's
+         `#if LINUX` webview support (X11WebViewLayoutSync and its call site) compiled to nothing,
+         so module webviews were never laid out or hardened here at all. -->
+    <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+        <DefineConstants>WINDOWS</DefineConstants>
+    </PropertyGroup>
+    <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+        <DefineConstants>LINUX</DefineConstants>
+    </PropertyGroup>
+    <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+        <DefineConstants>MACOS</DefineConstants>
+    </PropertyGroup>
+
     <ItemGroup>
         <PackageReference Include="Avalonia" Version="11.3.1" />
         <PackageReference Include="Avalonia.Controls.ColorPicker" Version="11.3.1" />

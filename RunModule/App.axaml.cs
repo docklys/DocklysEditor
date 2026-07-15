@@ -35,6 +35,11 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+#if LINUX
+        // Before the first module webview is constructed, so none can slip through unhooked.
+        WebViewNavigationHost.Install();
+#endif
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.MainWindow = new MainWindow();

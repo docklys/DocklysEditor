@@ -9,8 +9,39 @@ namespace RunModule;
 class Program
 {
     [STAThread]
-    public static void Main(string[] args) => BuildAvaloniaApp()
-        .StartWithClassicDesktopLifetime(args);
+    public static void Main(string[] args)
+    {
+        // Must precede BuildAvaloniaApp: it has to win before any GTK code loads.
+        ForceX11WebViewBackend();
+        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+    }
+
+    // Mirrors Dockly.Desktop's own startup (see its Program.cs) — the editor previews the same
+    // module webviews and needs the same environment, or every one of them renders black here
+    // while working in the dock.
+    //
+    // WebView.Avalonia embeds WebKitGTK by X11 reparenting: the library creates a GTK toplevel
+    // and hands Avalonia its XID. When GTK initializes on the Wayland backend there is no XID —
+    // gdk_x11_window_get_xid asserts, no native surface is ever created, and the module is left
+    // polling for a handle that never arrives. The library tries to force X11 itself, but via
+    // Environment.SetEnvironmentVariable, which on Unix only updates .NET's managed copy and
+    // never the native environ GTK actually reads. So set it natively instead.
+    private static void ForceX11WebViewBackend()
+    {
+#if LINUX
+        try { setenv("GDK_BACKEND", "x11", 1); } catch { /* worst case: webview floats */ }
+        // WebKitGTK's DMA-BUF renderer presents out of band when the view is embedded by X11
+        // reparenting under Xwayland, which flickers. overwrite=0 so a user-set value still wins.
+        try { setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1", 0); } catch { /* worst case: flicker */ }
+#endif
+    }
+
+#if LINUX
+    // Writes to the *native* environment block — unlike Environment.SetEnvironmentVariable,
+    // which on Unix only touches .NET's managed copy that native libraries never see.
+    [System.Runtime.InteropServices.DllImport("libc", SetLastError = true)]
+    private static extern int setenv(string name, string value, int overwrite);
+#endif
 
     public static AppBuilder BuildAvaloniaApp()
     {

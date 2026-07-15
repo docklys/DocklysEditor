@@ -98,8 +98,46 @@ internal static class X11WebViewLayoutSync
 
             XMoveResizeWindow(_display, holder, x, y, (uint)width, (uint)height);
             XMoveResizeWindow(_display, native, 0, 0, (uint)width, (uint)height);
+
+            // A native child is a square X window and knows nothing about the module's corner
+            // radius, so WebKit paints square corners over it. Dockly rounds the holder via the
+            // X Shape extension; do the same here or previews misrepresent the shipped module.
+            // Re-shaping costs a server round-trip, so only do it when the geometry changed.
+            var radius = Math.Max(1, (int)Math.Round(WebViewCornerRadiusLogical * scale * scaling));
+            var shape = ShapeCache.TryGetValue(holder, out var last) ? last : (-1, -1, -1);
+            if (shape != (width, height, radius))
+            {
+                ApplyRoundedBoundingShape(holder, width, height, radius);
+                ShapeCache[holder] = (width, height, radius);
+            }
         }
         XFlush(_display);
+    }
+
+    // Matches Dockly's WebViewCornerRadiusLogical: deliberately smaller than the module's own
+    // outer radius so the two contours don't fight along the same edge.
+    private const double WebViewCornerRadiusLogical = 6.0;
+
+    // Last shape written per holder window, so a static preview costs nothing per frame.
+    private static readonly Dictionary<nint, (int W, int H, int R)> ShapeCache = new();
+
+    // Approximates a rounded rectangle with one-pixel rows down each corner arc plus a single
+    // rectangle for the straight middle — the same construction Dockly uses.
+    private static void ApplyRoundedBoundingShape(nint window, int w, int h, int r)
+    {
+        r = Math.Min(r, Math.Min(w, h) / 2);
+        if (r < 1) return;
+
+        var rects = new List<XRectangle>(2 * r + 1);
+        for (var row = 0; row < r; row++)
+        {
+            var inset = r - (int)Math.Round(Math.Sqrt((double)r * r - (r - row - 0.5) * (r - row - 0.5)));
+            rects.Add(new XRectangle { X = (short)inset, Y = (short)row, Width = (ushort)Math.Max(1, w - 2 * inset), Height = 1 });
+            rects.Add(new XRectangle { X = (short)inset, Y = (short)(h - 1 - row), Width = (ushort)Math.Max(1, w - 2 * inset), Height = 1 });
+        }
+        rects.Add(new XRectangle { X = 0, Y = (short)r, Width = (ushort)w, Height = (ushort)Math.Max(1, h - 2 * r) });
+
+        XShapeCombineRectangles(_display, window, ShapeBounding, 0, 0, rects.ToArray(), rects.Count, ShapeSet, 0);
     }
 
     private static nint ResolveNativeWindow(Control webView)
@@ -131,11 +169,18 @@ internal static class X11WebViewLayoutSync
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int XErrorHandler(nint display, nint error);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct XRectangle { public short X, Y; public ushort Width, Height; }
+
+    private const int ShapeBounding = 0;
+    private const int ShapeSet = 0;
+
     [DllImport("libX11.so.6")] private static extern nint XOpenDisplay(nint display);
     [DllImport("libX11.so.6")] private static extern nint XSetErrorHandler(nint handler);
     [DllImport("libX11.so.6")] private static extern int XQueryTree(nint display, nint window, out nint root, out nint parent, out nint children, out uint childCount);
     [DllImport("libX11.so.6")] private static extern int XFree(nint data);
     [DllImport("libX11.so.6")] private static extern int XMoveResizeWindow(nint display, nint window, int x, int y, uint width, uint height);
     [DllImport("libX11.so.6")] private static extern int XFlush(nint display);
+    [DllImport("libXext.so.6")] private static extern void XShapeCombineRectangles(nint display, nint window, int destKind, int xOff, int yOff, XRectangle[] rectangles, int nRects, int op, int ordering);
 }
 #endif

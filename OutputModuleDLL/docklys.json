@@ -1,9 +1,9 @@
 {
-  "name": "spotify",
+  "name": "Comms",
   "type": "module",
-  "license": "None",
-  "description": "A Docklys module: spotify",
+  "license": "MIT",
+  "description": "",
   "version": "1.0",
-  "sizeBytes": 89600,
-  "githubRepo": "dcqwqc/Docklys.spotify"
+  "sizeBytes": 45056,
+  "githubRepo": ""
 }
