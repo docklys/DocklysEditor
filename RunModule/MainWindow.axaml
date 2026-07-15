@@ -300,7 +300,7 @@
                             Spacing="10">
                     <TextBlock Text="Zoom" Classes="caption"/>
                     <Slider Name="ZoomSlider"
-                            Minimum="25"
+                            Minimum="100"
                             Maximum="150"
                             Value="100"
                             Width="300"

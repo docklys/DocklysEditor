@@ -623,7 +623,21 @@ public partial class MainWindow : Window
 
     private string? FindDocklyExecutable() => FindDocklyExecutableWithReport().exePath;
 
-    // Locates Dockly's exe across both published and dev layouts, and returns a
+    // A Unix apphost is an extension-less ELF file with the execute bit; the managed .dll next to
+    // it is neither. Used to tell them apart, since the Unix search has no ".exe" to filter on.
+    private static bool IsExecutableFile(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            return info.Exists
+                   && (info.UnixFileMode & (UnixFileMode.UserExecute | UnixFileMode.GroupExecute
+                                            | UnixFileMode.OtherExecute)) != 0;
+        }
+        catch { return false; }
+    }
+
+    // Locates Dockly's executable across both published and dev layouts, and returns a
     // human-readable search report when nothing is found (used for the error tooltip).
     private (string? exePath, string? searchReport) FindDocklyExecutableWithReport()
     {
@@ -637,23 +651,33 @@ public partial class MainWindow : Window
 
         var searched = new System.Collections.Generic.List<string>();
 
-        // 1. Published / release layout: exe sits next to Modules.
-        foreach (var name in new[] { "Dockly.Desktop.exe", "Dockly.exe" })
+        // Only Windows builds carry the .exe suffix; on Linux/macOS the apphost is the bare
+        // project name. Searching for ".exe" alone is why this reported "Could not locate
+        // Dockly.Desktop.exe or Dockly.exe" on Linux, where that file can never exist.
+        var exeSuffix = OperatingSystem.IsWindows() ? ".exe" : "";
+
+        // 1. Published / release layout: the host sits next to Modules.
+        foreach (var name in new[] { "Dockly.Desktop", "Dockly" })
         {
-            var path = Path.Combine(docklyDir, name);
+            var path = Path.Combine(docklyDir, name + exeSuffix);
             searched.Add(path);
             if (File.Exists(path)) return (path, null);
         }
 
-        // 2. Dev layout: <root>\<Proj>\bin\<Config>\<TFM>\<Proj>.exe — pick the freshest.
+        // 2. Dev layout: <root>/<Proj>/bin/<Config>/<TFM>/<Proj>[.exe] — pick the freshest.
         foreach (var projDir in new[] { "Dockly.Desktop", "Dockly" })
         {
             var binDir = Path.Combine(docklyDir, projDir, "bin");
-            searched.Add(Path.Combine(binDir, "**", $"{projDir}.exe"));
+            var hostName = projDir + exeSuffix;
+            searched.Add(Path.Combine(binDir, "**", hostName));
             if (!Directory.Exists(binDir)) continue;
             try
             {
-                var freshest = Directory.GetFiles(binDir, $"{projDir}.exe", SearchOption.AllDirectories)
+                var freshest = Directory.GetFiles(binDir, hostName, SearchOption.AllDirectories)
+                                        // The apphost has no extension on Unix, so the same glob
+                                        // also matches the managed Dockly.Desktop.dll's siblings;
+                                        // keep only a real executable file.
+                                        .Where(p => OperatingSystem.IsWindows() || IsExecutableFile(p))
                                         .OrderByDescending(File.GetLastWriteTimeUtc)
                                         .FirstOrDefault();
                 if (freshest != null) return (freshest, null);

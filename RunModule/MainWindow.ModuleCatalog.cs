@@ -89,7 +89,7 @@ public partial class MainWindow
                     if (IsModuleType(t)) { found = t; break; }
                 }
 
-                if (found != null && IsSupportedByCurrentPlatform(found))
+                if (found != null && CanPreviewModule(found))
                 {
                     _catalog.Add(new ModuleEntry(folderName, csproj, dll, found, ctx));
                     ctx = null; // ownership transferred to catalog entry
@@ -298,29 +298,38 @@ public partial class MainWindow
         && typeof(Control).IsAssignableFrom(t)
         && t.GetInterfaces().Any(i => i.Name == nameof(IModule));
 
-    private static bool IsSupportedByCurrentPlatform(Type moduleType)
+    // Whether the carousel can show this module at all.
+    //
+    // SupportedPlatforms is deliberately NOT a filter here. It describes where a module is useful
+    // in the dock, not where a developer may work on it: honouring it in the editor silently hid
+    // any module whose platform differs from the dev's machine — VolumeMixer (Windows-only, it
+    // drives WASAPI) simply never appeared on Linux, with no way to preview or skin its layout.
+    // The dock still enforces the declaration; the editor is a workbench and shows everything.
+    //
+    // Modules are expected to degrade rather than throw off their platform (VolumeMixer draws an
+    // empty mixer). One that cannot even be constructed is still excluded — it would only become
+    // an error panel — and the reason is preserved in the debug log.
+    private static bool CanPreviewModule(Type moduleType)
     {
         try
         {
             var instance = Activator.CreateInstance(moduleType);
             var platforms = moduleType.GetProperty("SupportedPlatforms")?.GetValue(instance)
                 as IEnumerable<string>;
-            if (platforms == null)
-                return true;
 
             var platform = OperatingSystem.IsWindows() ? "Windows"
                 : OperatingSystem.IsMacOS() ? "Mac"
                 : "Linux";
-            bool supported = platforms.Any(item =>
-                string.Equals(item, platform, StringComparison.OrdinalIgnoreCase));
-            if (!supported)
-                Debug.WriteLine($"[Catalog] Skipping {moduleType.FullName}: unsupported on {platform}.");
-            return supported;
+            if (platforms != null && !platforms.Any(item =>
+                    string.Equals(item, platform, StringComparison.OrdinalIgnoreCase)))
+            {
+                Debug.WriteLine($"[Catalog] {moduleType.FullName} does not declare {platform} support — "
+                                + "previewing anyway; its platform-specific features will be inert.");
+            }
+            return true;
         }
         catch (Exception ex)
         {
-            // A module that cannot even be constructed for metadata would become an error panel
-            // later. Keep it out of the carousel and preserve the actionable reason in debug log.
             Debug.WriteLine($"[Catalog] Skipping {moduleType.FullName}: metadata construction failed: {ex}");
             return false;
         }

@@ -30,7 +30,19 @@ namespace VolumeMixer
 
         public string MinAppVersion => "1.0.0";
         public string MaxAppVersion => "1.0.0";
+        // Stays Windows-only, and truthfully so: the mixer drives NAudio's CoreAudioApi (WASAPI),
+        // which is Windows COM and has no Linux/macOS implementation. The dock must keep excluding
+        // it elsewhere rather than offer a module whose audio cannot work.
+        //
+        // The editor previews modules on whatever OS the developer happens to use, so this
+        // declaration must not be what decides whether the module can be *rendered*. Every audio
+        // enumeration below is guarded by AudioSessionsAvailable: off-Windows the mixer draws its
+        // normal shell with no sessions instead of throwing, which is all a layout/skin preview
+        // needs. Porting the backend to PipeWire/PulseAudio is what would make this list grow.
         public string[] SupportedPlatforms => new[] { "Windows" };
+
+        // NAudio's CoreAudioApi is Windows-only; touching MMDeviceEnumerator anywhere else throws.
+        private static bool AudioSessionsAvailable => OperatingSystem.IsWindows();
 
         private string? _uniqueModuleId;
         public string UniqueModuleId { get { return _uniqueModuleId ?? string.Empty; } }
@@ -112,6 +124,9 @@ namespace VolumeMixer
         {
             var clickedButton = sender as Button;
             if (clickedButton == null) return;
+            // The picker's whole content is the session list, so there is nothing to show here
+            // without one. Bail before building the popup rather than opening an empty one.
+            if (!AudioSessionsAvailable) return;
 
             const double fixedPopupSize = 100;
             var popup = new Popup
@@ -440,6 +455,10 @@ namespace VolumeMixer
                 this.FindControl<Slider>("VolumeSlider4"),
             };
 
+            // Off-Windows there are no sessions to attach; the shell above is already built, so
+            // returning here leaves an empty-but-correct mixer to preview.
+            if (!AudioSessionsAvailable) return;
+
             var enumerator = new MMDeviceEnumerator();
             var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
             var sessions = device.AudioSessionManager.Sessions;
@@ -695,6 +714,7 @@ namespace VolumeMixer
         private void UpdateSliderFromJson(Slider slider, string sliderName)
         {
             if (_sliderSessions.ContainsKey(sliderName)) return;
+            if (!AudioSessionsAvailable) return;
 
             var enumerator = new MMDeviceEnumerator();
             var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
