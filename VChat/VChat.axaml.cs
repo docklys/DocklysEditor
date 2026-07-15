@@ -14,7 +14,7 @@ using System.Runtime.InteropServices;
 
 namespace VChat
 {
-    public partial class VChat : UserControl, IModule, IResizable, IInteractionFreezable
+    public partial class VChat : UserControl, IModule, IResizable, IInteractionFreezable, IWebViewModule
     {
         // IModule
         public string Id => "VChat";
@@ -29,6 +29,25 @@ namespace VChat
         public string MinAppVersion => "1.0.0";
         public string MaxAppVersion => "2.0.0";
         public string[] SupportedPlatforms => new[] { "Windows", "Linux", "Mac" };
+
+        // The host applies this consistently to WebKitGTK and native Chromium/WebView2 paths.
+        // VChat keeps its own UI/content code; Dockly owns native browser integration.
+        public static readonly WebViewModuleDefinition WebViewDefinition = new()
+        {
+            StartUrl = VChatUrl,
+            AllowedHosts = new[] { "v.qwqc.de" },
+            AllowExternalNavigation = false,
+            UserAgentProfile = WebViewUserAgentProfile.MobileChromium,
+            Features = WebViewFeatures.HideScrollbars
+                | WebViewFeatures.MiddleMouseDragGuard
+                | WebViewFeatures.ScaleToFit
+                | WebViewFeatures.MobileViewport,
+            // Match the previous process-wide WebKit cookie setup until VChat has its own
+            // reviewed storage/auth policy.
+            UsePersistentCookies = true
+        };
+
+        public WebViewModuleDefinition WebView => WebViewDefinition;
 
         private string _uniqueModuleId = string.Empty;
         public string UniqueModuleId => _uniqueModuleId;
@@ -1843,4 +1862,3 @@ namespace VChat
         }
     }
 }
-

@@ -14,7 +14,7 @@ using System.Runtime.InteropServices;
 
 namespace spotify
 {
-    public partial class spotify : UserControl, IModule, IResizable, IInteractionFreezable
+    public partial class spotify : UserControl, IModule, IResizable, IInteractionFreezable, IWebViewModule
     {
         // IModule
         public string Id => "spotify";
@@ -29,6 +29,30 @@ namespace spotify
         public string MinAppVersion => "1.0.0";
         public string MaxAppVersion => "2.0.0";
         public string[] SupportedPlatforms => new[] { "Windows", "Linux", "Mac" };
+
+        // Dockly reads this declaration before configuring the native browser. Keeping it here
+        // makes Spotify's web requirements explicit instead of relying on the DLL/type name.
+        public static readonly WebViewModuleDefinition WebViewDefinition = new()
+        {
+            StartUrl = SpotifyUrl,
+            AllowedHosts = new[] { "open.spotify.com", "accounts.spotify.com" },
+            // Preserve the old embedded-browser behaviour during migration: Spotify itself
+            // decides which of its linked pages stay in the tile rather than handing a new host
+            // to the system browser.
+            AllowExternalNavigation = false,
+            UserAgentProfile = WebViewUserAgentProfile.Spotify,
+            LinuxEngine = WebViewLinuxEngine.ChromiumOverlay,
+            InitialZoom = 0.5,
+            Features = WebViewFeatures.HideScrollbars
+                | WebViewFeatures.MiddleMouseDragGuard
+                | WebViewFeatures.ScaleToFit
+                | WebViewFeatures.MobileViewport
+                | WebViewFeatures.MouseToTouch,
+            UsePersistentCookies = true,
+            UseChromiumLoginHandoff = true
+        };
+
+        public WebViewModuleDefinition WebView => WebViewDefinition;
 
         private string _uniqueModuleId = string.Empty;
         public string UniqueModuleId => _uniqueModuleId;
