@@ -43,7 +43,13 @@ namespace scrcpy
         private MirrorSession? _session;
         private WriteableBitmap? _bitmap;
         private int _bmpWidth, _bmpHeight;
+        private readonly object _frameSync = new();
+        private byte[]? _pendingFrame;
+        private int _pendingFrameWidth, _pendingFrameHeight;
+        private bool _frameUpdateQueued;
         private bool _pointerDown;
+        // Retain a valid device point so an off-screen release can still lift the touch.
+        private int _lastTouchX, _lastTouchY;
         private readonly CancellationTokenSource _cts = new();
 
         public scrcpy()
@@ -56,6 +62,8 @@ namespace scrcpy
             InputSurface.PointerPressed += OnPointerPressed;
             InputSurface.PointerMoved += OnPointerMoved;
             InputSurface.PointerReleased += OnPointerReleased;
+            InputSurface.PointerExited += OnPointerExited;
+            InputSurface.PointerCaptureLost += OnPointerCaptureLost;
             InputSurface.PointerWheelChanged += OnPointerWheel;
             InputSurface.KeyDown += OnKeyDown;
             InputSurface.TextInput += OnTextInput;
@@ -110,39 +118,67 @@ namespace scrcpy
         {
             if (_cts.IsCancellationRequested) return;
 
-            Dispatcher.UIThread.Post(() =>
+            // Frame callbacks run on the decoder thread. Coalesce them to one normal UI
+            // job: Render-priority work can wait for the next render pass, which may not
+            // happen after the cursor leaves the tile. Keeping only the latest frame also
+            // prevents a stale queue from making the mirror look frozen after UI activity.
+            lock (_frameSync)
             {
-                if (_bitmap == null || _bmpWidth != width || _bmpHeight != height)
-                {
-                    _bitmap?.Dispose();
-                    _bitmap = new WriteableBitmap(
-                        new PixelSize(width, height),
-                        new Vector(96, 96),
-                        PixelFormat.Bgra8888,
-                        AlphaFormat.Opaque);
-                    _bmpWidth = width;
-                    _bmpHeight = height;
-                    Screen.Source = _bitmap;
-                }
+                _pendingFrame = frame;
+                _pendingFrameWidth = width;
+                _pendingFrameHeight = height;
+                if (_frameUpdateQueued) return;
+                _frameUpdateQueued = true;
+            }
 
-                using (var fb = _bitmap.Lock())
-                {
-                    // Row by row: the locked buffer's stride need not equal width*4.
-                    var srcStride = width * 4;
-                    if (fb.RowBytes == srcStride)
-                    {
-                        Marshal.Copy(frame, 0, fb.Address, Math.Min(frame.Length, fb.RowBytes * height));
-                    }
-                    else
-                    {
-                        for (var y = 0; y < height; y++)
-                            Marshal.Copy(frame, y * srcStride, fb.Address + y * fb.RowBytes, srcStride);
-                    }
-                }
+            Dispatcher.UIThread.Post(RenderLatestFrame, DispatcherPriority.Normal);
+        }
 
-                StatusText.IsVisible = false;
-                Screen.InvalidateVisual();
-            }, DispatcherPriority.Render);
+        private void RenderLatestFrame()
+        {
+            byte[]? frame;
+            int width, height;
+            lock (_frameSync)
+            {
+                frame = _pendingFrame;
+                width = _pendingFrameWidth;
+                height = _pendingFrameHeight;
+                _pendingFrame = null;
+                _frameUpdateQueued = false;
+            }
+
+            if (_cts.IsCancellationRequested || frame == null) return;
+
+            if (_bitmap == null || _bmpWidth != width || _bmpHeight != height)
+            {
+                _bitmap?.Dispose();
+                _bitmap = new WriteableBitmap(
+                    new PixelSize(width, height),
+                    new Vector(96, 96),
+                    PixelFormat.Bgra8888,
+                    AlphaFormat.Opaque);
+                _bmpWidth = width;
+                _bmpHeight = height;
+                Screen.Source = _bitmap;
+            }
+
+            using (var fb = _bitmap.Lock())
+            {
+                // Row by row: the locked buffer's stride need not equal width*4.
+                var srcStride = width * 4;
+                if (fb.RowBytes == srcStride)
+                {
+                    Marshal.Copy(frame, 0, fb.Address, Math.Min(frame.Length, fb.RowBytes * height));
+                }
+                else
+                {
+                    for (var y = 0; y < height; y++)
+                        Marshal.Copy(frame, y * srcStride, fb.Address + y * fb.RowBytes, srcStride);
+                }
+            }
+
+            StatusText.IsVisible = false;
+            Screen.InvalidateVisual();
         }
 
         /// <summary>
@@ -181,6 +217,8 @@ namespace scrcpy
             if (!TryMapToDevice(e.GetPosition(InputSurface), out var x, out var y)) return;
 
             _pointerDown = true;
+            _lastTouchX = x;
+            _lastTouchY = y;
             InputSurface.Focus();
             e.Pointer.Capture(InputSurface);
             _ = session.Control.SendTouchAsync(TouchAction.Down, x, y,
@@ -194,22 +232,41 @@ namespace scrcpy
             if (session?.Control == null) return;
             if (!TryMapToDevice(e.GetPosition(InputSurface), out var x, out var y)) return;
 
+            _lastTouchX = x;
+            _lastTouchY = y;
             _ = session.Control.SendTouchAsync(TouchAction.Move, x, y,
                     session.VideoWidth, session.VideoHeight, 1.0f, _cts.Token);
         }
 
         private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
         {
+            EndActiveTouch();
+            e.Pointer.Capture(null);
+        }
+
+        // A captured pointer can be released outside InputSurface. If that is not
+        // translated to an Android UP event, scrcpy leaves the mouse button latched
+        // and the displayed phone only starts responding again after another click.
+        private void OnPointerExited(object? sender, PointerEventArgs e)
+        {
+            if (!_pointerDown) return;
+            EndActiveTouch();
+            e.Pointer.Capture(null);
+        }
+
+        // Also clear a touch cancelled by the host or a focus change while captured.
+        private void OnPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e) => EndActiveTouch();
+
+        private void EndActiveTouch()
+        {
             if (!_pointerDown) return;
             _pointerDown = false;
-            e.Pointer.Capture(null);
 
             var session = _session;
             if (session?.Control == null) return;
-            if (!TryMapToDevice(e.GetPosition(InputSurface), out var x, out var y)) return;
 
             // Pressure 0 on release, matching what the real client sends for a lift.
-            _ = session.Control.SendTouchAsync(TouchAction.Up, x, y,
+            _ = session.Control.SendTouchAsync(TouchAction.Up, _lastTouchX, _lastTouchY,
                     session.VideoWidth, session.VideoHeight, 0f, _cts.Token);
         }
 

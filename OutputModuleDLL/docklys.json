@@ -1,9 +1,9 @@
 {
-  "name": "VolumeMixer",
+  "name": "scrcpy",
   "type": "module",
-  "license": "None",
+  "license": "MIT",
   "description": "",
   "version": "1.0",
-  "sizeBytes": 54272,
+  "sizeBytes": 795136,
   "githubRepo": ""
 }
