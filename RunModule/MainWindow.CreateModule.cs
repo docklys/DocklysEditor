@@ -478,6 +478,7 @@ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>";
     internal static void StyleDialog(Window w)
     {
         w.RequestedThemeVariant = ThemeVariant.Dark;
+        w.Classes.Add("dialog");
         w.Background = new SolidColorBrush(Color.Parse("#1A1A1A"));
         w.Foreground = Brushes.White;
 

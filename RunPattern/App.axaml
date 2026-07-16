@@ -24,5 +24,14 @@
         <Style Selector="MenuItem[Header='Capture Docklys']">
             <Setter Property="IsVisible" Value="False" />
         </Style>
+        <Style Selector="MenuItem[Header='Manage images']">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+        <Style Selector="Window.dialog Button"><Setter Property="Foreground" Value="#F5F7FA"/><Setter Property="Background" Value="#252A2F"/><Setter Property="BorderBrush" Value="#58616A"/><Setter Property="BorderThickness" Value="1"/></Style>
+        <Style Selector="Window.dialog Button /template/ ContentPresenter"><Setter Property="Background" Value="#252A2F"/><Setter Property="BorderBrush" Value="#58616A"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="4"/></Style>
+        <Style Selector="Window.dialog Button:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="#363E46"/><Setter Property="BorderBrush" Value="#D7DCE1"/></Style>
+        <Style Selector="Window.dialog TextBox"><Setter Property="Foreground" Value="#F5F7FA"/><Setter Property="Background" Value="#101214"/><Setter Property="BorderBrush" Value="#58616A"/><Setter Property="CaretBrush" Value="#FFFFFF"/></Style>
+        <Style Selector="Window.dialog ComboBox"><Setter Property="Foreground" Value="#F5F7FA"/><Setter Property="Background" Value="#101214"/><Setter Property="BorderBrush" Value="#58616A"/></Style>
+        <Style Selector="Window.dialog CheckBox"><Setter Property="Foreground" Value="#F5F7FA"/></Style>
     </Application.Styles>
 </Application>
