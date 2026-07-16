@@ -29,7 +29,9 @@ public partial class MainWindow
     // Keep the snap logic aligned with the editor slider's minimum value.
     // Without this, the 4-column "real size" preset (98.8%) can bypass the
     // slider's visual floor and still be applied to the preview.
-    private const double MinimumZoomPercent = 100.0;
+    // Four to eight tiles per row are legitimately below 100% in Docklys.
+    // Keep every real layout available to the slider and cycle command.
+    private const double MinimumZoomPercent = 25.0;
 
     // --- Mirror of the main app's grid constants (Docklys MainWindow.axaml.cs) ---
     private const double MainApp_FixedSideGap = 20.0;
@@ -132,10 +134,16 @@ public partial class MainWindow
     private void UpdateZoomLabel(double percent, int? columns)
     {
         var lbl = this.FindControl<TextBlock>("ZoomLabel");
-        if (lbl == null) return;
-        lbl.Text = columns.HasValue
+        if (lbl != null)
+            lbl.Text = columns.HasValue
             ? $"{(int)Math.Round(percent)}% · {columns}/row"
             : $"{(int)Math.Round(percent)}%";
+
+        var layoutButton = this.FindControl<Button>("MainAppSizeButton");
+        if (layoutButton != null)
+            layoutButton.Content = columns.HasValue
+                ? $"{columns} tiles / row"
+                : "Dock tile layout";
     }
 
     // "⊞ Real size" button: step to the next Tiles-per-row config and lock the

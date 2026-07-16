@@ -68,10 +68,6 @@ namespace scrcpy
             InputSurface.KeyDown += OnKeyDown;
             InputSurface.TextInput += OnTextInput;
 
-            BackButton.Click    += (_, _) => SendKey(AndroidKeycode.Back);
-            HomeButton.Click    += (_, _) => SendKey(AndroidKeycode.Home);
-            RecentsButton.Click += (_, _) => SendKey(AndroidKeycode.AppSwitch);
-            PowerButton.Click   += (_, _) => SendKey(AndroidKeycode.Power);
         }
 
         private void OnAttached(object? sender, VisualTreeAttachmentEventArgs e) => _ = StartAsync();

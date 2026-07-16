@@ -7,9 +7,17 @@
         <Color x:Key="ColorColorBackground">#2A2D31</Color>
         <Color x:Key="ColorColor2Background">#1A1C1F</Color>
         <Color x:Key="ColorColor3Background">#FFFFFF</Color>
-        <Color x:Key="ColorAccent">#4F9CF9</Color>
+        <Color x:Key="ColorAccent">#E7EAED</Color>
         <SolidColorBrush x:Key="ColorFont" Color="#EDEDED" />
-        <SolidColorBrush x:Key="ColorAccentBrush" Color="#4F9CF9" />
+        <SolidColorBrush x:Key="ColorAccentBrush" Color="#E7EAED" />
+        <Color x:Key="SystemAccentColor">#E7EAED</Color>
+        <Color x:Key="SystemAccentColorLight1">#F4F6F8</Color>
+        <Color x:Key="SystemAccentColorLight2">#FFFFFF</Color>
+        <Color x:Key="SystemAccentColorDark1">#C7CDD3</Color>
+        <Color x:Key="SystemAccentColorDark2">#A5ADB5</Color>
+        <Color x:Key="SystemAccentColorDark3">#7E8892</Color>
+        <SolidColorBrush x:Key="SystemControlHighlightAccentBrush" Color="#E7EAED"/>
+        <SolidColorBrush x:Key="SystemControlHighlightAccentBrush2" Color="#C7CDD3"/>
         <SolidColorBrush x:Key="ColorModuleBackground" Color="#1F1F1F" />
         <SolidColorBrush x:Key="ColorModuleBorder" Color="#2F2F2F" />
     </Application.Resources>

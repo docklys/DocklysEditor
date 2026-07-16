@@ -6,7 +6,7 @@
             Width="350"
             Height="590"
             CornerRadius="10">
-        <Grid RowDefinitions="*,Auto">
+        <Grid>
 
             <!-- Phone screen. Black backdrop so the letterboxed area reads as bezel. -->
             <Border Grid.Row="0"
@@ -35,26 +35,6 @@
                                Margin="12"/>
                 </Grid>
             </Border>
-
-            <!-- Navigation bar: the phone's gesture nav is awkward in a small tile. -->
-            <StackPanel Grid.Row="1"
-                        Orientation="Horizontal"
-                        HorizontalAlignment="Center"
-                        Spacing="14"
-                        Margin="0,6,0,2">
-                <Button Name="BackButton"    Content="◀" FontSize="12" Padding="10,2"
-                        Foreground="{DynamicResource ColorModuleFont}" Background="Transparent"
-                        ToolTip.Tip="Back"/>
-                <Button Name="HomeButton"    Content="●" FontSize="12" Padding="10,2"
-                        Foreground="{DynamicResource ColorModuleFont}" Background="Transparent"
-                        ToolTip.Tip="Home"/>
-                <Button Name="RecentsButton" Content="■" FontSize="12" Padding="10,2"
-                        Foreground="{DynamicResource ColorModuleFont}" Background="Transparent"
-                        ToolTip.Tip="Recent apps"/>
-                <Button Name="PowerButton"   Content="⏻" FontSize="12" Padding="10,2"
-                        Foreground="{DynamicResource ColorModuleFont}" Background="Transparent"
-                        ToolTip.Tip="Power"/>
-            </StackPanel>
         </Grid>
     </Border>
 </UserControl>
