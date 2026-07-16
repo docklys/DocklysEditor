@@ -1,7 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -26,6 +28,8 @@ public partial class MainWindow : Window
         PatternLoadContext LoadContext);
 
     private readonly List<PatternEntry> _catalog = new();
+    private readonly List<Control> _footerCommands = new();
+    private Grid? _footerRows;
     private int _currentIndex;
     private IPatternInteraction? _interaction;
 
@@ -36,6 +40,10 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        MinWidth = 360;
+        MinHeight = 230;
+        ArrangeCommandBar();
+        SizeChanged += (_, _) => ReflowFooter();
 
         var preview = this.FindControl<Border>("PreviewBorder")!;
         preview.PointerMoved += OnPreviewPointerMoved;
@@ -45,6 +53,91 @@ public partial class MainWindow : Window
         {
             LoadCatalog();
             ShowPatternAtIndex(_currentIndex);
+        };
+    }
+
+    private void ArrangeCommandBar()
+    {
+        if (Content is not Grid root) return;
+
+        var headerBar = root.Children.OfType<Border>().FirstOrDefault();
+        MakeHorizontallyScrollable(headerBar);
+
+        var commandBar = root.Children.OfType<Border>().LastOrDefault();
+        if (commandBar == null) return;
+
+        PrepareResponsiveFooter(commandBar);
+    }
+
+    private void PrepareResponsiveFooter(Border commandBar)
+    {
+        if (commandBar.Child is not Panel layout) return;
+
+        CollectCommands(layout, _footerCommands);
+        if (_footerCommands.Count == 0) return;
+
+        _footerRows = new Grid { RowSpacing = 6 };
+        commandBar.Child = new ScrollViewer
+        {
+            Content = _footerRows,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled
+        };
+        ReflowFooter();
+    }
+
+    private void ReflowFooter()
+    {
+        if (_footerRows == null || _footerCommands.Count == 0) return;
+
+        var availableWidth = Math.Max(Bounds.Width - 32, 180);
+        var requiredWidth = 0d;
+        foreach (var command in _footerCommands)
+        {
+            command.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            requiredWidth += Math.Max(command.DesiredSize.Width, 80) + 6;
+        }
+
+        var rowCount = Math.Clamp((int)Math.Ceiling(requiredWidth / availableWidth), 1, 4);
+        var commandsPerRow = (int)Math.Ceiling(_footerCommands.Count / (double)rowCount);
+        foreach (var existingRow in _footerRows.Children.OfType<Panel>().ToList())
+            existingRow.Children.Clear();
+        _footerRows.Children.Clear();
+        _footerRows.RowDefinitions = new RowDefinitions(string.Join(',', Enumerable.Repeat("Auto", rowCount)));
+
+        for (var row = 0; row < rowCount; row++)
+        {
+            var rowPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            Grid.SetRow(rowPanel, row);
+            _footerRows.Children.Add(rowPanel);
+            foreach (var command in _footerCommands.Skip(row * commandsPerRow).Take(commandsPerRow))
+                rowPanel.Children.Add(command);
+        }
+    }
+
+    private static void CollectCommands(Panel panel, List<Control> commands)
+    {
+        foreach (var child in panel.Children.ToList())
+        {
+            panel.Children.Remove(child);
+            if (child is Panel nested)
+                CollectCommands(nested, commands);
+            else
+                commands.Add(child);
+        }
+    }
+
+    private static void MakeHorizontallyScrollable(Border? bar)
+    {
+        if (bar == null || bar.Child is ScrollViewer) return;
+
+        var content = bar.Child;
+        bar.Child = null;
+        bar.Child = new ScrollViewer
+        {
+            Content = content,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Disabled
         };
     }
 

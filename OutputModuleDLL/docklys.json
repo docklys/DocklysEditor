@@ -1,9 +1,9 @@
 {
-  "name": "VolumeMixer",
+  "name": "Webview",
   "type": "module",
   "license": "None",
-  "description": "",
+  "description": "A Docklys module: Webview",
   "version": "1.0",
-  "sizeBytes": 54272,
-  "githubRepo": ""
+  "sizeBytes": 80896,
+  "githubRepo": "dcqwqc/Docklys.Webview"
 }

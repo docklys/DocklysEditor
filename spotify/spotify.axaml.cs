@@ -237,7 +237,8 @@ namespace spotify
         public void FreezeInteraction()
         {
             _isFrozen = true;
-            if (_webView != null) _webView.IsVisible = true;
+            if (OperatingSystem.IsWindows() && _webView != null)
+                _webView.IsVisible = true;
             StartContinuousSync();
         }
 
@@ -251,12 +252,15 @@ namespace spotify
             }
             if (_webView != null)
             {
-                _webView.IsVisible = true;
-                Dispatcher.UIThread.Post(() =>
+                if (OperatingSystem.IsWindows())
                 {
-                    try { ForceWebViewRelayout(); SyncWebViewHwndToVisualBounds(); ApplyWebViewRoundedCorners(); }
-                    catch { }
-                }, DispatcherPriority.Background);
+                    _webView.IsVisible = true;
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        try { ForceWebViewRelayout(); SyncWebViewHwndToVisualBounds(); ApplyWebViewRoundedCorners(); }
+                        catch { }
+                    }, DispatcherPriority.Background);
+                }
             }
             StartContinuousSync();
         }
@@ -302,7 +306,11 @@ namespace spotify
             }
             else
             {
-                if (_webView != null) _webView.IsVisible = true;
+                // Linux uses a separate Chrome surface for the live player. The managed WebKit
+                // control remains a hidden fallback; showing it here creates an oversized native
+                // window that escapes the module bounds.
+                if (OperatingSystem.IsWindows() && _webView != null)
+                    _webView.IsVisible = true;
                 if (OperatingSystem.IsWindows() && _webViewHwnd != IntPtr.Zero)
                     ShowWindow(_webViewHwnd, 5); // SW_SHOW
                 StartContinuousSync();
