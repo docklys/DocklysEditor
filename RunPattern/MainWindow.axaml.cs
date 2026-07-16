@@ -107,11 +107,20 @@ public partial class MainWindow : Window
 
         for (var row = 0; row < rowCount; row++)
         {
-            var rowPanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            var rowCommands = _footerCommands.Skip(row * commandsPerRow).Take(commandsPerRow).ToList();
+            var rowPanel = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions(string.Join(',', Enumerable.Repeat("*", rowCommands.Count)))
+            };
             Grid.SetRow(rowPanel, row);
             _footerRows.Children.Add(rowPanel);
-            foreach (var command in _footerCommands.Skip(row * commandsPerRow).Take(commandsPerRow))
+            for (var column = 0; column < rowCommands.Count; column++)
+            {
+                var command = rowCommands[column];
+                Grid.SetColumn(command, column);
+                command.HorizontalAlignment = HorizontalAlignment.Stretch;
                 rowPanel.Children.Add(command);
+            }
         }
     }
 

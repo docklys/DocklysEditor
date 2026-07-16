@@ -28,9 +28,11 @@
         <Style Selector="ToggleButton.command:checked /template/ ContentPresenter"><Setter Property="Background" Value="#48515A"/><Setter Property="BorderBrush" Value="#D7DCE1"/></Style>
         <Style Selector="Path.icon"><Setter Property="Width" Value="15"/><Setter Property="Height" Value="15"/><Setter Property="Stretch" Value="Uniform"/><Setter Property="Fill" Value="Transparent"/><Setter Property="Stroke" Value="#FFFFFF"/><Setter Property="StrokeThickness" Value="1.5"/><Setter Property="StrokeLineCap" Value="Round"/></Style>
         <Style Selector="Button.primary Path.icon"><Setter Property="Stroke" Value="#121416"/></Style>
-        <Style Selector="Button.nav"><Setter Property="Width" Value="38"/><Setter Property="Height" Value="38"/><Setter Property="Padding" Value="0"/><Setter Property="Background" Value="#20252A"/><Setter Property="BorderBrush" Value="#3C434B"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="19"/></Style>
-        <Style Selector="Button.nav:pointerover"><Setter Property="Background" Value="#343B42"/></Style>
-        <Style Selector="Button.nav Path"><Setter Property="Stroke" Value="White"/><Setter Property="StrokeThickness" Value="2"/><Setter Property="StrokeLineCap" Value="Round"/></Style>
+        <Style Selector="Button.nav"><Setter Property="Width" Value="32"/><Setter Property="Height" Value="52"/><Setter Property="Padding" Value="0"/><Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/><Setter Property="CornerRadius" Value="0"/></Style>
+        <Style Selector="Button.nav /template/ ContentPresenter"><Setter Property="Background" Value="Transparent"/><Setter Property="BorderBrush" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/></Style>
+        <Style Selector="Button.nav:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="Transparent"/></Style>
+        <Style Selector="Button.nav Path"><Setter Property="Stroke" Value="#DCE1E6"/><Setter Property="StrokeThickness" Value="2.4"/><Setter Property="StrokeLineCap" Value="Round"/></Style>
+        <Style Selector="Button.nav:pointerover Path"><Setter Property="Stroke" Value="White"/></Style>
         <Style Selector="Border.delete"><Setter Property="Height" Value="30"/><Setter Property="Background" Value="#2C2527"/><Setter Property="BorderBrush" Value="#674B50"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="5"/><Setter Property="Cursor" Value="Hand"/></Style>
         <Style Selector="ComboBox#SkinComboBox"><Setter Property="Height" Value="30"/><Setter Property="MinWidth" Value="120"/><Setter Property="FontSize" Value="12"/><Setter Property="Foreground" Value="White"/><Setter Property="Background" Value="#252A2F"/><Setter Property="BorderBrush" Value="#3C434B"/><Setter Property="Padding" Value="8,3"/></Style>
     </Window.Styles>
@@ -43,6 +45,14 @@
                     <TextBlock Name="ActiveModuleNameLabel" Text="No module selected" FontSize="17" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="260"/>
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Name="GitHubButton" Classes="command" Content="GitHub repository" Click="OnGitHubClick" ToolTip.Tip="Create or update the module's GitHub repository"/>
+                    <Button Name="NewButton" Classes="command" Click="CreateModule_Click" ToolTip.Tip="Create a module"><StackPanel Orientation="Horizontal" Spacing="6"><ic:FluentIcon Icon="Add" IconVariant="Regular" FontSize="16" Foreground="White"/><TextBlock Text="New module"/></StackPanel></Button>
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="Zoom" Foreground="#AAB2BB" FontSize="11" VerticalAlignment="Center"/>
+                        <Slider Name="ZoomSlider" Theme="{StaticResource ZoomSliderTheme}" Width="100" Minimum="25" Maximum="200" Value="100" ValueChanged="ZoomSlider_ValueChanged" ToolTip.Tip="Preview zoom; snaps to real Docklys tile layouts"/>
+                        <TextBlock Name="ZoomLabel" Text="100%" Width="82" FontSize="11" VerticalAlignment="Center"/>
+                        <Button Name="MainAppSizeButton" Classes="command" Content="Dock tile layout" Click="CycleMainAppSize_Click" ToolTip.Tip="Cycle the real Docklys layouts: 3 to 8 tiles per row"/>
+                    </StackPanel>
                     <Button Name="RenameButton" Classes="command" Click="RenameModule_Click" ToolTip.Tip="Rename the current module"><StackPanel Orientation="Horizontal" Spacing="6"><ic:FluentIcon Icon="Edit" IconVariant="Regular" FontSize="16" Foreground="White"/><TextBlock Text="Rename"/></StackPanel></Button>
                     <Button Name="TileSizeButton" Classes="command" Click="ChangeTileSize_Click" ToolTip.Tip="Set the module tile size"><StackPanel Orientation="Horizontal" Spacing="6"><ic:FluentIcon Icon="Grid" IconVariant="Regular" FontSize="16" Foreground="White"/><TextBlock Text="Tile size"/></StackPanel></Button>
                     <Border Name="DeleteButton" Classes="delete" Width="104" PointerPressed="DeleteButton_PointerPressed" PointerReleased="DeleteButton_PointerReleased" PointerCaptureLost="DeleteButton_PointerCaptureLost" ToolTip.Tip="Hold to delete this module">
@@ -67,35 +77,44 @@
                     </StackPanel>
                 </Grid>
             </Border>
-            <Button Name="ScrollLeftButton" Classes="nav" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-19,0,0,0" Click="ScrollLeft_Click" ToolTip.Tip="Previous module"><Path Data="M11,4 L5,10 L11,16"/></Button>
-            <Button Name="ScrollRightButton" Classes="nav" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,-19,0" Click="ScrollRight_Click" ToolTip.Tip="Next module"><Path Data="M5,4 L11,10 L5,16"/></Button>
+            <Button Name="ScrollLeftButton" Classes="nav" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="14,0,0,0" Click="ScrollLeft_Click" ToolTip.Tip="Previous module"><Path Data="M11,4 L5,10 L11,16"/></Button>
+            <Button Name="ScrollRightButton" Classes="nav" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,14,0" Click="ScrollRight_Click" ToolTip.Tip="Next module"><Path Data="M5,4 L11,10 L5,16"/></Button>
             <Border Name="ThemeSettingsOverlay" ZIndex="5" IsVisible="False" Background="#E915191D" BorderBrush="#5A646E" BorderThickness="1" CornerRadius="8" Padding="18" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="420">
-                <StackPanel Spacing="10"><TextBlock Text="Theme settings" FontSize="16" FontWeight="SemiBold"/><TextBlock Text="Adjust the color resources used by this preview." Foreground="#A9B1BA" FontSize="12"/><StackPanel Name="ThemeColorsContainer" Spacing="6"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6"><Button Classes="command" Content="Reset" Click="ResetTheme_Click"/><Button Classes="command" Content="Close" Click="CloseTheme_Click"/></StackPanel></StackPanel>
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Theme library" FontSize="16" FontWeight="SemiBold"/>
+                    <TextBlock Text="Choose a Docklys skin or adjust the color resources used by this preview." Foreground="#A9B1BA" FontSize="12" TextWrapping="Wrap"/>
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                        <TextBlock Text="Skin" Foreground="#AAB2BB" FontSize="11" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="1" Name="SkinComboBox" HorizontalAlignment="Stretch" SelectionChanged="SkinComboBox_SelectionChanged" ToolTip.Tip="Preview the module with a Docklys skin"/>
+                    </Grid>
+                    <StackPanel Name="ThemeColorsContainer" Spacing="6"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6"><Button Classes="command" Content="Reset" Click="ResetTheme_Click"/><Button Classes="command" Content="Close" Click="CloseTheme_Click"/></StackPanel>
+                </StackPanel>
             </Border>
         </Grid>
 
         <Border Grid.Row="2" Classes="app-bar" BorderThickness="0,1,0,0" Padding="16,10">
-            <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
-                <Grid ColumnDefinitions="Auto,*,Auto">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <Button Name="BuildDeployButton" Classes="command primary" Click="BuildAndDeploy_Click" ToolTip.Tip="Build and install this module in Docklys"><StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="M8,1 L3,9 H7 L6,15 L13,6 H9 Z"/><TextBlock Text="Build &amp; install"/></StackPanel></Button>
-                        <Button Name="DocklyLifecycleButton" Classes="command" Click="DocklyLifecycle_Click" ToolTip.Tip="Start or stop Docklys"><StackPanel Orientation="Horizontal" Spacing="6"><ic:FluentIcon Icon="Play" IconVariant="Regular" FontSize="16" Foreground="White"/><TextBlock Text="Docklys"/></StackPanel></Button>
-                    </StackPanel>
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
-                        <Button Classes="command" Click="CaptureToWebP_Click" ToolTip.Tip="Save a preview image"><StackPanel Orientation="Horizontal" Spacing="6"><ic:FluentIcon Icon="Image" IconVariant="Regular" FontSize="16" Foreground="White"/><TextBlock Text="Save preview"/></StackPanel></Button>
-                        <Button Name="GitHubButton" Classes="command" Content="GitHub repository" Click="OnGitHubClick" ToolTip.Tip="Create or update the module's GitHub repository"/>
-                        <Button Classes="command" Content="Files"><Button.Flyout><MenuFlyout Placement="Top"><MenuItem Header="Capture Docklys" Click="CaptureDock_Click"/><MenuItem Header="Open preview images" Click="OpenWebPFolder_Click"/><MenuItem Header="Open build output" Click="OpenOutputModuleDllFolder_Click"/><MenuItem Header="Open installed modules" Click="OpenDocklyModulesFolder_Click"/><MenuItem Header="Open module saves" Click="OpenSavesFolder_Click"/></MenuFlyout></Button.Flyout></Button>
-                        <Button Classes="command" Content="Project"><Button.Flyout><MenuFlyout Placement="Top"><MenuItem Header="Module information" Click="OnInfoClick"/><MenuItem Header="Change license" Click="OnLicenseClick"/><MenuItem Header="Publish module" Click="OnPublishClick"/></MenuFlyout></Button.Flyout></Button>
-                        <Button Classes="command" Content="Help &amp; legal"><Button.Flyout><MenuFlyout Placement="Top"><MenuItem Header="Terms of Service" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/terms-of-service"/><MenuItem Header="Privacy Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/privacy-policy"/><MenuItem Header="Support &amp; FAQ" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/support"/></MenuFlyout></Button.Flyout></Button>
-                    </StackPanel>
-                </Grid>
-                <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="8">
-                    <Button Name="NewButton" Classes="command" Click="CreateModule_Click" ToolTip.Tip="Create a module"><StackPanel Orientation="Horizontal" Spacing="6"><ic:FluentIcon Icon="Add" IconVariant="Regular" FontSize="16" Foreground="White"/><TextBlock Text="New module"/></StackPanel></Button>
-                    <Button Grid.Column="1" Name="ReloadButton" Classes="command" Click="ReloadModule_Click" ToolTip.Tip="Reload the current module"><StackPanel Orientation="Horizontal" Spacing="6"><ic:FluentIcon Icon="ArrowClockwise" IconVariant="Regular" FontSize="16" Foreground="White"/><TextBlock Text="Reload"/></StackPanel></Button>
-                    <Button Grid.Column="2" Name="ThemeButton" Classes="command" Click="ThemeButton_Click" ToolTip.Tip="Edit colors used only by this preview"><StackPanel Orientation="Horizontal" Spacing="6"><ic:FluentIcon Icon="Color" IconVariant="Regular" FontSize="16" Foreground="White"/><TextBlock Text="Edit theme"/></StackPanel></Button>
-                    <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"><TextBlock Text="PREVIEW LAYOUT" Classes="eyebrow" VerticalAlignment="Center"/><TextBlock Text="Zoom" Foreground="#AAB2BB" FontSize="11" VerticalAlignment="Center"/><Slider Name="ZoomSlider" Theme="{StaticResource ZoomSliderTheme}" Width="100" Minimum="25" Maximum="200" Value="100" ValueChanged="ZoomSlider_ValueChanged" ToolTip.Tip="Preview zoom; snaps to real Docklys tile layouts"/><TextBlock Name="ZoomLabel" Text="100%" Width="82" FontSize="11" VerticalAlignment="Center"/><Button Name="MainAppSizeButton" Classes="command" Content="Dock tile layout" Click="CycleMainAppSize_Click" ToolTip.Tip="Cycle the real Docklys layouts: 3 to 8 tiles per row"/><ToggleButton Name="DualViewButton" Classes="command" Content="Show two modules" Click="ToggleDualView_Click" ToolTip.Tip="Preview two module instances side by side"/><ToggleButton Name="SlidePreviewButton" Classes="command" Content="Play slide animation" IsCheckedChanged="SlidePreviewButton_IsCheckedChanged" ToolTip.Tip="Loop the Docklys slide-in and slide-out animation"/><TextBlock Text="Skin" Foreground="#AAB2BB" FontSize="11" VerticalAlignment="Center"/><ComboBox Name="SkinComboBox" SelectionChanged="SkinComboBox_SelectionChanged" ToolTip.Tip="Preview the module with a Docklys skin"/></StackPanel>
-                </Grid>
-            </Grid>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <Button Name="BuildDeployButton" Classes="command primary" Click="BuildAndDeploy_Click" ToolTip.Tip="Build and install this module in Docklys"><StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="M8,1 L3,9 H7 L6,15 L13,6 H9 Z"/><TextBlock Text="Build &amp; install"/></StackPanel></Button>
+                <Button Name="ReloadButton" Classes="command" Click="ReloadModule_Click" ToolTip.Tip="Reload the current module"><StackPanel Orientation="Horizontal" Spacing="6"><ic:FluentIcon Icon="ArrowClockwise" IconVariant="Regular" FontSize="16" Foreground="White"/><TextBlock Text="Reload"/></StackPanel></Button>
+                <Button Name="DocklyLifecycleButton" Classes="command" Click="DocklyLifecycle_Click" ToolTip.Tip="Start or stop Docklys"><StackPanel Orientation="Horizontal" Spacing="6"><ic:FluentIcon Icon="Play" IconVariant="Regular" FontSize="16" Foreground="White"/><TextBlock Text="Docklys"/></StackPanel></Button>
+                <Button Name="ThemeButton" Classes="command" Click="ThemeButton_Click" ToolTip.Tip="Choose a skin or edit preview colors"><StackPanel Orientation="Horizontal" Spacing="6"><ic:FluentIcon Icon="Color" IconVariant="Regular" FontSize="16" Foreground="White"/><TextBlock Text="Theme library"/></StackPanel></Button>
+                <Button Classes="command" Click="CaptureToWebP_Click" ToolTip.Tip="Save a preview image"><StackPanel Orientation="Horizontal" Spacing="6"><ic:FluentIcon Icon="Image" IconVariant="Regular" FontSize="16" Foreground="White"/><TextBlock Text="Save preview"/></StackPanel></Button>
+                <Button Classes="command" Content="Testing" ToolTip.Tip="Preview module behavior">
+                    <Button.Flyout>
+                        <Flyout Placement="Top">
+                            <StackPanel Spacing="6" MinWidth="190">
+                                <TextBlock Text="TESTING" Classes="eyebrow" Margin="4,2"/>
+                                <ToggleButton Name="DualViewButton" Classes="command" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Content="Show two modules" Click="ToggleDualView_Click" ToolTip.Tip="Preview two module instances side by side"/>
+                                <ToggleButton Name="SlidePreviewButton" Classes="command" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Content="Play slide animation" IsCheckedChanged="SlidePreviewButton_IsCheckedChanged" ToolTip.Tip="Loop the Docklys slide-in and slide-out animation"/>
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+                <Button Classes="command" Content="Files"><Button.Flyout><MenuFlyout Placement="Top"><MenuItem Header="Capture Docklys" Click="CaptureDock_Click"/><MenuItem Header="Open preview images" Click="OpenWebPFolder_Click"/><MenuItem Header="Open build output" Click="OpenOutputModuleDllFolder_Click"/><MenuItem Header="Open installed modules" Click="OpenDocklyModulesFolder_Click"/><MenuItem Header="Open module saves" Click="OpenSavesFolder_Click"/></MenuFlyout></Button.Flyout></Button>
+                <Button Classes="command" Content="Project"><Button.Flyout><MenuFlyout Placement="Top"><MenuItem Header="Module information" Click="OnInfoClick"/><MenuItem Header="Change license" Click="OnLicenseClick"/><MenuItem Header="Publish module" Click="OnPublishClick"/></MenuFlyout></Button.Flyout></Button>
+                <Button Classes="command" Content="Help &amp; legal"><Button.Flyout><MenuFlyout Placement="Top"><MenuItem Header="Terms of Service" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/terms-of-service"/><MenuItem Header="Privacy Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/privacy-policy"/><MenuItem Header="Support &amp; FAQ" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/support"/></MenuFlyout></Button.Flyout></Button>
+            </StackPanel>
         </Border>
     </Grid>
 </Window>
