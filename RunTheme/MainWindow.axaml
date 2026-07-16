@@ -222,6 +222,10 @@
                             Click="OnImagesClick"
                             ToolTip.Tip="Manage theme images: icon, preview screenshot, extra screenshots"/>
                     <Button Classes="toolbar"
+                            Content="🌐 Publish"
+                            Click="OnPublishClick"
+                            ToolTip.Tip="Open docklys.com/DocklysEditor in your browser with this theme's name, version, license, description and GitHub repo pre-filled"/>
+                    <Button Classes="toolbar"
                             Content="Legal"
                             ToolTip.Tip="Legal &amp; Support">
                         <Button.Flyout>

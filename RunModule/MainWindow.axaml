@@ -2,509 +2,92 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="776" d:DesignHeight="338"
-        x:Class="RunModule.MainWindow"
-        Title="Module Editor - Docklys"
-        Width="776"
-        Height="338"
-        MinWidth="450"
-        MinHeight="225"
-        SizeToContent="Manual"
-        WindowStartupLocation="CenterScreen"
-        RequestedThemeVariant="Dark"
-        Background="#1A1A1A"
-        Foreground="White">
-    <Window.Resources>
-    </Window.Resources>
+        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="560"
+        x:Class="RunModule.MainWindow" Title="Module Editor - Docklys"
+        Width="900" Height="560" MinWidth="560" MinHeight="360"
+        WindowStartupLocation="CenterScreen" RequestedThemeVariant="Dark"
+        Background="#121416" Foreground="White">
     <Window.Styles>
-        <!-- Zoom slider thumb: solid white pill to match the b/w palette. -->
-        <Style Selector="Slider#ZoomSlider /template/ Thumb">
-            <Setter Property="Template">
-                <ControlTemplate>
-                    <Border Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="3"
-                            Width="{TemplateBinding Width}"
-                            Height="{TemplateBinding Height}" />
-                </ControlTemplate>
-            </Setter>
-            <Setter Property="Background" Value="White" />
-            <Setter Property="BorderBrush" Value="#777777" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Width" Value="14" />
-            <Setter Property="Height" Value="10" />
-        </Style>
-        <Style Selector="Slider#ZoomSlider">
-            <Setter Property="Background" Value="#1A1A1A" />
-            <Setter Property="Foreground" Value="#FFFFFF" />
-            <Setter Property="BorderBrush" Value="#555555" />
-        </Style>
-
-        <!-- Section dividers between top toolbar / preview / bottom toolbar. -->
-        <Style Selector="Border.toolbar-bar">
-            <Setter Property="Background" Value="#202020" />
-            <Setter Property="BorderBrush" Value="#2F2F2F" />
-        </Style>
-
-        <!-- Captions / muted labels above grouped controls. -->
-        <Style Selector="TextBlock.caption">
-            <Setter Property="FontSize" Value="10" />
-            <Setter Property="Foreground" Value="#888888" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-        </Style>
-
-        <!-- Carousel arrow buttons: chrome-free, just clean white chevrons. -->
-        <Style Selector="Button.scroll-arrow">
-            <Setter Property="Width" Value="36" />
-            <Setter Property="Height" Value="56" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
-            <Setter Property="VerticalContentAlignment" Value="Center" />
-        </Style>
-        <Style Selector="Button.scroll-arrow /template/ ContentPresenter">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-        </Style>
-        <Style Selector="Button.scroll-arrow:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-        </Style>
-        <Style Selector="Button.scroll-arrow:pressed /template/ ContentPresenter">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-        </Style>
-        <Style Selector="Button.scroll-arrow Path">
-            <Setter Property="Stroke" Value="White" />
-            <Setter Property="StrokeThickness" Value="2.5" />
-            <Setter Property="StrokeLineCap" Value="Round" />
-            <Setter Property="StrokeJoin" Value="Round" />
-        </Style>
-        <Style Selector="Button.scroll-arrow:pointerover Path">
-            <Setter Property="StrokeThickness" Value="3.5" />
-        </Style>
-
-        <!-- Dev toolbar buttons share a compact monochrome look. -->
-        <Style Selector="Button.toolbar">
-            <Setter Property="Height" Value="26" />
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="Padding" Value="10,2" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="Background" Value="#2A2A2A" />
-            <Setter Property="BorderBrush" Value="#555555" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="3" />
-        </Style>
-        <Style Selector="Button.toolbar /template/ ContentPresenter">
-            <Setter Property="Background" Value="#2A2A2A" />
-            <Setter Property="BorderBrush" Value="#555555" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="3" />
-        </Style>
-        <Style Selector="Button.toolbar:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#3D3D3D" />
-            <Setter Property="BorderBrush" Value="#777777" />
-            <Setter Property="TextElement.Foreground" Value="White" />
-        </Style>
-        <Style Selector="Button.toolbar:pressed /template/ ContentPresenter">
-            <Setter Property="Background" Value="#1A1A1A" />
-            <Setter Property="BorderBrush" Value="#555555" />
-            <Setter Property="TextElement.Foreground" Value="White" />
-        </Style>
-        <Style Selector="Button.toolbar:disabled /template/ ContentPresenter">
-            <Setter Property="Background" Value="#222222" />
-            <Setter Property="BorderBrush" Value="#3A3A3A" />
-            <Setter Property="TextElement.Foreground" Value="#666666" />
-        </Style>
-
-        <!-- Dual-view toggle: full set of states so the Fluent theme's blue
-             accent never bleeds through. Unchecked mirrors Button.toolbar;
-             checked is slightly brighter to read as "on". -->
-        <Style Selector="ToggleButton.toolbar">
-            <Setter Property="Height" Value="26" />
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="Padding" Value="10,2" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="Background" Value="#2A2A2A" />
-            <Setter Property="BorderBrush" Value="#555555" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="3" />
-        </Style>
-        <Style Selector="ToggleButton.toolbar /template/ ContentPresenter">
-            <Setter Property="Background" Value="#2A2A2A" />
-            <Setter Property="BorderBrush" Value="#555555" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="3" />
-        </Style>
-        <Style Selector="ToggleButton.toolbar:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#3D3D3D" />
-            <Setter Property="BorderBrush" Value="#777777" />
-            <Setter Property="TextElement.Foreground" Value="White" />
-        </Style>
-        <Style Selector="ToggleButton.toolbar:pressed /template/ ContentPresenter">
-            <Setter Property="Background" Value="#1A1A1A" />
-            <Setter Property="BorderBrush" Value="#555555" />
-            <Setter Property="TextElement.Foreground" Value="White" />
-        </Style>
-        <Style Selector="ToggleButton.toolbar:checked /template/ ContentPresenter">
-            <Setter Property="Background" Value="#5A5A5A" />
-            <Setter Property="BorderBrush" Value="#AAAAAA" />
-        </Style>
-        <Style Selector="ToggleButton.toolbar:checked:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#6A6A6A" />
-            <Setter Property="BorderBrush" Value="#BBBBBB" />
-        </Style>
-        <Style Selector="ToggleButton.toolbar:checked:pressed /template/ ContentPresenter">
-            <Setter Property="Background" Value="#444444" />
-            <Setter Property="BorderBrush" Value="#888888" />
-        </Style>
-
-        <!-- The "primary" call-to-action: the deploy button. Lighter bg
-             so it reads as the headline action without breaking the
-             monochrome palette. -->
-        <Style Selector="Button.toolbar.primary /template/ ContentPresenter">
-            <Setter Property="Background" Value="#4A4A4A" />
-            <Setter Property="BorderBrush" Value="#888888" />
-        </Style>
-        <Style Selector="Button.toolbar.primary:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#5C5C5C" />
-            <Setter Property="BorderBrush" Value="#AAAAAA" />
-        </Style>
-        <Style Selector="Button.toolbar.primary:pressed /template/ ContentPresenter">
-            <Setter Property="Background" Value="#383838" />
-            <Setter Property="BorderBrush" Value="#888888" />
-        </Style>
-
-        <!-- Hold-to-charge delete widget. -->
-        <Style Selector="Border.delete-btn">
-            <Setter Property="Height" Value="26" />
-            <Setter Property="CornerRadius" Value="3" />
-            <Setter Property="Background" Value="#3A3A3A" />
-            <Setter Property="BorderBrush" Value="#555555" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-        </Style>
-
-        <!-- Skin picker matches the toolbar buttons. -->
-        <Style Selector="ComboBox#SkinComboBox">
-            <Setter Property="Background" Value="#2A2A2A" />
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="BorderBrush" Value="#555555" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="3" />
-            <Setter Property="Padding" Value="8,2" />
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="Height" Value="26" />
-        </Style>
-        <Style Selector="ComboBox#SkinComboBox /template/ Border#Background">
-            <Setter Property="Background" Value="#2A2A2A" />
-            <Setter Property="BorderBrush" Value="#555555" />
-        </Style>
-        <Style Selector="ComboBox#SkinComboBox:pointerover /template/ Border#Background">
-            <Setter Property="Background" Value="#3D3D3D" />
-            <Setter Property="BorderBrush" Value="#777777" />
-        </Style>
-        <Style Selector="ComboBox#SkinComboBox:pressed /template/ Border#Background">
-            <Setter Property="Background" Value="#1A1A1A" />
-            <Setter Property="BorderBrush" Value="#555555" />
-        </Style>
-        <Style Selector="ComboBox#SkinComboBox:focus /template/ Border#Background">
-            <Setter Property="BorderBrush" Value="#888888" />
-        </Style>
-        <Style Selector="ComboBoxItem">
-            <Setter Property="Foreground" Value="White" />
-            <Setter Property="Background" Value="#2A2A2A" />
-            <Setter Property="Padding" Value="8,4" />
-        </Style>
-        <Style Selector="ComboBoxItem /template/ ContentPresenter">
-            <Setter Property="Background" Value="#2A2A2A" />
-        </Style>
-        <Style Selector="ComboBoxItem:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#3D3D3D" />
-            <Setter Property="TextElement.Foreground" Value="White" />
-        </Style>
-        <Style Selector="ComboBoxItem:selected /template/ ContentPresenter">
-            <Setter Property="Background" Value="#4A4A4A" />
-            <Setter Property="TextElement.Foreground" Value="White" />
-        </Style>
-        <Style Selector="ComboBoxItem:selected:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#555555" />
-            <Setter Property="TextElement.Foreground" Value="White" />
-        </Style>
+        <Style Selector="Border.app-bar"><Setter Property="Background" Value="#191C1F"/><Setter Property="BorderBrush" Value="#2E3338"/></Style>
+        <Style Selector="TextBlock.eyebrow"><Setter Property="FontSize" Value="10"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="#949CA5"/><Setter Property="LetterSpacing" Value="0.8"/></Style>
+        <Style Selector="Button.command"><Setter Property="Height" Value="30"/><Setter Property="Padding" Value="10,4"/><Setter Property="FontSize" Value="12"/><Setter Property="Foreground" Value="#F5F7FA"/><Setter Property="Background" Value="#252A2F"/><Setter Property="BorderBrush" Value="#3C434B"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="5"/></Style>
+        <Style Selector="Button.command /template/ ContentPresenter"><Setter Property="Background" Value="#252A2F"/><Setter Property="BorderBrush" Value="#3C434B"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="5"/></Style>
+        <Style Selector="Button.command:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="#343B42"/><Setter Property="BorderBrush" Value="#5C6670"/></Style>
+        <Style Selector="Button.command:pressed /template/ ContentPresenter"><Setter Property="Background" Value="#1A1E22"/></Style>
+        <Style Selector="Button.command:disabled /template/ ContentPresenter"><Setter Property="Background" Value="#1C2024"/><Setter Property="BorderBrush" Value="#2C3136"/><Setter Property="TextElement.Foreground" Value="#68717A"/></Style>
+        <Style Selector="Button.primary /template/ ContentPresenter"><Setter Property="Background" Value="#F3F5F7"/><Setter Property="BorderBrush" Value="#FFFFFF"/><Setter Property="TextElement.Foreground" Value="#121416"/></Style>
+        <Style Selector="Button.primary:pointerover /template/ ContentPresenter"><Setter Property="Background" Value="#D8DDE2"/><Setter Property="BorderBrush" Value="#FFFFFF"/></Style>
+        <Style Selector="ToggleButton.command"><Setter Property="Height" Value="30"/><Setter Property="Padding" Value="10,4"/><Setter Property="FontSize" Value="12"/><Setter Property="Foreground" Value="#F5F7FA"/><Setter Property="Background" Value="#252A2F"/><Setter Property="BorderBrush" Value="#3C434B"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="5"/></Style>
+        <Style Selector="ToggleButton.command /template/ ContentPresenter"><Setter Property="Background" Value="#252A2F"/><Setter Property="BorderBrush" Value="#3C434B"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="5"/></Style>
+        <Style Selector="ToggleButton.command:checked /template/ ContentPresenter"><Setter Property="Background" Value="#48515A"/><Setter Property="BorderBrush" Value="#D7DCE1"/></Style>
+        <Style Selector="Path.icon"><Setter Property="Width" Value="15"/><Setter Property="Height" Value="15"/><Setter Property="Stretch" Value="Uniform"/><Setter Property="Fill" Value="#FFFFFF"/></Style>
+        <Style Selector="Button.primary Path.icon"><Setter Property="Fill" Value="#121416"/></Style>
+        <Style Selector="Button.nav"><Setter Property="Width" Value="38"/><Setter Property="Height" Value="38"/><Setter Property="Padding" Value="0"/><Setter Property="Background" Value="#20252A"/><Setter Property="BorderBrush" Value="#3C434B"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="19"/></Style>
+        <Style Selector="Button.nav:pointerover"><Setter Property="Background" Value="#343B42"/></Style>
+        <Style Selector="Button.nav Path"><Setter Property="Stroke" Value="White"/><Setter Property="StrokeThickness" Value="2"/><Setter Property="StrokeLineCap" Value="Round"/></Style>
+        <Style Selector="Border.delete"><Setter Property="Height" Value="30"/><Setter Property="Background" Value="#2C2527"/><Setter Property="BorderBrush" Value="#674B50"/><Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="5"/><Setter Property="Cursor" Value="Hand"/></Style>
+        <Style Selector="ComboBox#SkinComboBox"><Setter Property="Height" Value="30"/><Setter Property="MinWidth" Value="120"/><Setter Property="FontSize" Value="12"/><Setter Property="Foreground" Value="White"/><Setter Property="Background" Value="#252A2F"/><Setter Property="BorderBrush" Value="#3C434B"/><Setter Property="Padding" Value="8,3"/></Style>
+        <Style Selector="Slider#ZoomSlider /template/ Thumb"><Setter Property="Background" Value="White"/><Setter Property="Width" Value="12"/><Setter Property="Height" Value="12"/></Style>
     </Window.Styles>
 
-    <Grid RowDefinitions="Auto, *, Auto">
-
-        <!-- ═════════ Top bar: identity | view | skin ═════════ -->
-        <Border Grid.Row="0"
-                Classes="toolbar-bar"
-                BorderThickness="0,0,0,1"
-                Padding="10,6">
-            <Grid ColumnDefinitions="Auto, *, Auto">
-
-                <!-- Module identity + per-module actions -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <TextBlock Name="ActiveModuleNameLabel"
-                               Text="(no module)"
-                               FontSize="13"
-                               FontWeight="SemiBold"
-                               Foreground="White"
-                               VerticalAlignment="Center"
-                               MinWidth="80"/>
-                    <Button Name="RenameButton"
-                            Classes="toolbar"
-                            Content="✎ Rename"
-                            Click="RenameModule_Click"
-                            ToolTip.Tip="Rename the currently displayed module" />
-                    <Button Name="TileSizeButton"
-                            Classes="toolbar"
-                            Content="⊡ Size"
-                            Click="ChangeTileSize_Click"
-                            ToolTip.Tip="Change the tile width and height of the active module" />
-
-                    <!-- Hold-to-charge delete (Border, not Button — we drive
-                         PointerPressed / Released ourselves so the Button
-                         Click handler doesn't interfere). -->
-                    <Border Name="DeleteButton"
-                            Classes="delete-btn"
-                            Width="130"
-                            PointerPressed="DeleteButton_PointerPressed"
-                            PointerReleased="DeleteButton_PointerReleased"
-                            PointerCaptureLost="DeleteButton_PointerCaptureLost"
-                            ToolTip.Tip="Press and HOLD to charge a deletion, then enter 1234 to confirm">
-                        <Grid ClipToBounds="True">
-                            <Border Name="DeleteChargeFill"
-                                    HorizontalAlignment="Left"
-                                    Background="#888888"
-                                    Width="0" />
-                            <TextBlock Name="DeleteButtonLabel"
-                                       Text="✕ Hold to delete"
-                                       FontSize="11"
-                                       Foreground="White"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center" />
-                        </Grid>
-                    </Border>
+    <Grid RowDefinitions="Auto,*,Auto">
+        <Border Grid.Row="0" Classes="app-bar" BorderThickness="0,0,0,1" Padding="16,10">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <StackPanel Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Text="MODULE" Classes="eyebrow"/>
+                    <TextBlock Name="ActiveModuleNameLabel" Text="No module selected" FontSize="17" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="260"/>
                 </StackPanel>
-
-                <!-- Center: zoom + dual-view toggle -->
-                <StackPanel Grid.Column="1"
-                            Orientation="Horizontal"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Spacing="10">
-                    <TextBlock Text="Zoom" Classes="caption"/>
-                    <Slider Name="ZoomSlider"
-                            Minimum="100"
-                            Maximum="150"
-                            Value="100"
-                            Width="300"
-                            ValueChanged="ZoomSlider_ValueChanged"
-                            VerticalAlignment="Center"
-                            ToolTip.Tip="Drag to zoom. The slider magnetically locks onto the real sizes the module has in Docklys at each Tiles-per-row setting (3–8), marked by ticks."/>
-                    <TextBlock Name="ZoomLabel"
-                               Text="100%"
-                               FontSize="11"
-                               Foreground="White"
-                               VerticalAlignment="Center"
-                               MinWidth="72"/>
-                    <Button Name="MainAppSizeButton"
-                            Classes="toolbar"
-                            Content="⊞ Real size"
-                            Click="CycleMainAppSize_Click"
-                            ToolTip.Tip="Snap the preview to the module's real size in Docklys. Click to cycle through each Tiles-per-row setting (3→8)."/>
-                    <ToggleButton Name="DualViewButton"
-                                  Classes="toolbar"
-                                  Content="⧉ Dual"
-                                  Click="ToggleDualView_Click"
-                                  ToolTip.Tip="Show two instances of the module side by side to preview cross-instance sync"/>
-                    <ToggleButton Name="SlidePreviewButton"
-                                  Classes="toolbar"
-                                  Content="↔ Slide"
-                                  IsCheckedChanged="SlidePreviewButton_IsCheckedChanged"
-                                  ToolTip.Tip="Loop the Docklys slide-in/out animation on the module preview"/>
-                </StackPanel>
-
-                <!-- Right: skin -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <TextBlock Text="Skin" Classes="caption"/>
-                    <ComboBox Name="SkinComboBox"
-                              MinWidth="120"
-                              SelectionChanged="SkinComboBox_SelectionChanged"/>
+                    <Button Name="RenameButton" Classes="command" Click="RenameModule_Click" ToolTip.Tip="Rename the current module"><StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="M3,12.5 L3,15 L5.5,15 L13.8,6.7 L11.3,4.2 Z M12.2,3.3 L13.5,2 L16,4.5 L14.7,5.8 Z"/><TextBlock Text="Rename"/></StackPanel></Button>
+                    <Button Name="TileSizeButton" Classes="command" Click="ChangeTileSize_Click" ToolTip.Tip="Set the module tile size"><StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="M2,2 H7 V7 H2 Z M9,2 H14 V7 H9 Z M2,9 H7 V14 H2 Z M9,9 H14 V14 H9 Z"/><TextBlock Text="Tile size"/></StackPanel></Button>
+                    <Border Name="DeleteButton" Classes="delete" Width="104" PointerPressed="DeleteButton_PointerPressed" PointerReleased="DeleteButton_PointerReleased" PointerCaptureLost="DeleteButton_PointerCaptureLost" ToolTip.Tip="Hold to delete this module">
+                        <Grid ClipToBounds="True"><Border Name="DeleteChargeFill" HorizontalAlignment="Left" Background="#715158" Width="0"/><StackPanel Orientation="Horizontal" Spacing="5" HorizontalAlignment="Center" VerticalAlignment="Center"><Path Classes="icon" Data="M3,4 H13 V15 H3 Z M5,2 H11 V3 H5 Z M6,6 V12 H7 V6 Z M9,6 V12 H10 V6 Z"/><TextBlock Name="DeleteButtonLabel" Text="Hold delete" FontSize="11"/></StackPanel></Grid>
+                    </Border>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- ═════════ Module preview: one or two slots + cycle arrows ═════════ -->
-        <Grid Name="PreviewGrid" Grid.Row="1" ClipToBounds="False">
-            <!-- Module slots: one visible by default, two when Dual is toggled. -->
-            <StackPanel Name="ModulePreviewPanel"
-                        Orientation="Horizontal"
-                        Spacing="16"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center">
-                <ContentControl Name="ActiveModuleSlot" />
-                <ContentControl Name="SecondModuleSlot"
-                                IsVisible="False" />
-            </StackPanel>
-            <Button Name="ScrollLeftButton"
-                    Classes="scroll-arrow"
-                    HorizontalAlignment="Left"
-                    VerticalAlignment="Center"
-                    Margin="10,0,0,0"
-                    IsVisible="False"
-                    Click="ScrollLeft_Click"
-                    ToolTip.Tip="Previous module">
-                <Path Data="M 12 0 L 0 16 L 12 32" />
-            </Button>
-            <Button Name="ScrollRightButton"
-                    Classes="scroll-arrow"
-                    HorizontalAlignment="Right"
-                    VerticalAlignment="Center"
-                    Margin="0,0,10,0"
-                    IsVisible="False"
-                    Click="ScrollRight_Click"
-                    ToolTip.Tip="Next module">
-                <Path Data="M 0 0 L 12 16 L 0 32" />
-            </Button>
-
-            <!-- ═════════ Theme Settings Overlay ═════════ -->
-            <Border Name="ThemeSettingsOverlay"
-                    IsVisible="False"
-                    Background="#1A1A1A"
-                    Width="280"
-                    HorizontalAlignment="Left"
-                    BorderBrush="#3A3A3A"
-                    BorderThickness="0,0,1,0"
-                    ZIndex="1000">
-                <Grid RowDefinitions="Auto, *, Auto" Margin="16">
-                    <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,12">
-                        <TextBlock Text="THEME SETTINGS"
-                                   FontSize="13"
-                                   FontWeight="Bold"
-                                   Foreground="White"/>
-                        <TextBlock Text="Edit module color resources"
-                                   FontSize="10"
-                                   Opacity="0.5"
-                                   Foreground="White"/>
-                    </StackPanel>
-
-                    <ScrollViewer Grid.Row="1" Margin="0,0,0,12">
-                        <StackPanel Name="ThemeColorsContainer" Spacing="6">
-                            <!-- Dynamic color entries will be added here from C# -->
-                        </StackPanel>
-                    </ScrollViewer>
-
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
-                        <Button Content="Reset"
-                                Classes="toolbar"
-                                FontSize="10"
-                                Click="ResetTheme_Click"/>
-                        <Button Content="Close"
-                                Classes="toolbar"
-                                FontSize="10"
-                                Click="CloseTheme_Click"/>
+        <Grid Name="PreviewGrid" Grid.Row="1" Margin="16,12" ClipToBounds="False">
+            <Border Background="#0B0D0F" BorderBrush="#30363D" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+                <Grid RowDefinitions="Auto,*">
+                    <Border Background="#15191D" BorderBrush="#2A3036" BorderThickness="0,0,0,1" Padding="12,8">
+                        <DockPanel>
+                            <TextBlock Text="LIVE PREVIEW" Classes="eyebrow" VerticalAlignment="Center"/>
+                            <TextBlock DockPanel.Dock="Right" Text="Use the arrows to change module" FontSize="11" Foreground="#949CA5" VerticalAlignment="Center"/>
+                        </DockPanel>
+                    </Border>
+                    <StackPanel Name="ModulePreviewPanel" Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
+                        <ContentControl Name="ActiveModuleSlot"/>
+                        <ContentControl Name="SecondModuleSlot" IsVisible="False"/>
                     </StackPanel>
                 </Grid>
             </Border>
+            <Button Name="ScrollLeftButton" Classes="nav" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-19,0,0,0" Click="ScrollLeft_Click" ToolTip.Tip="Previous module"><Path Data="M11,4 L5,10 L11,16"/></Button>
+            <Button Name="ScrollRightButton" Classes="nav" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,-19,0" Click="ScrollRight_Click" ToolTip.Tip="Next module"><Path Data="M5,4 L11,10 L5,16"/></Button>
+            <Border Name="ThemeSettingsOverlay" ZIndex="5" IsVisible="False" Background="#E915191D" BorderBrush="#5A646E" BorderThickness="1" CornerRadius="8" Padding="18" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="420">
+                <StackPanel Spacing="10"><TextBlock Text="Theme settings" FontSize="16" FontWeight="SemiBold"/><TextBlock Text="Adjust the color resources used by this preview." Foreground="#A9B1BA" FontSize="12"/><StackPanel Name="ThemeColorsContainer" Spacing="6"/><StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6"><Button Classes="command" Content="Reset" Click="ResetTheme_Click"/><Button Classes="command" Content="Close" Click="CloseTheme_Click"/></StackPanel></StackPanel>
+            </Border>
         </Grid>
 
-        <!-- ═════════ Bottom bar: lifecycle | deploy | artifacts ═════════
-             Three logical groups, separated by elastic gaps. Lifecycle on
-             the left (Create/Reload), the headline deploy action centered
-             and styled as primary, and artifact ops aligned right.        -->
-        <Border Grid.Row="2"
-                Classes="toolbar-bar"
-                BorderThickness="0,1,0,0"
-                Padding="10,6">
-            <Grid ColumnDefinitions="Auto, *, Auto, *, Auto">
-
-                <!-- Module lifecycle -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <Button Classes="toolbar"
-                            Content="✚ New"
-                            Click="CreateModule_Click"
-                            ToolTip.Tip="Scaffold a new module by cloning DefaultModule"/>
-                    <Button Classes="toolbar"
-                            Content="↺ Reload"
-                            Click="ReloadModule_Click"
-                            ToolTip.Tip="Re-instantiate the active module"/>
-                    <Button Name="ThemeButton"
-                            Classes="toolbar"
-                            Content="🎨 Theme"
-                            Click="ThemeButton_Click"
-                            ToolTip.Tip="Customize the global theme colors"/>
-                </StackPanel>
-
-                <!-- Deploy (center, primary styling) -->
-                <Button Grid.Column="2"
-                        Name="BuildDeployButton"
-                        Classes="toolbar primary"
-                        Content="⚡ Push to Docklys"
-                        Click="BuildAndDeploy_Click"
-                        ToolTip.ShowDelay="200"/>
-
-                <!-- Artifacts -->
-                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <Button Classes="toolbar"
-                            Content="⚖ Legal">
-                        <Button.Flyout>
-                            <MenuFlyout Placement="Top">
-                                <MenuItem Header="Terms of Service" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/terms-of-service"/>
-                                <MenuItem Header="Developer Terms" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/developer-terms"/>
-                                <MenuItem Header="Privacy Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/privacy-policy"/>
-                                <MenuItem Header="Legal Notice" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/legal-notice"/>
-                                <Separator/>
-                                <MenuItem Header="Revocation Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/revocation-policy"/>
-                                <MenuItem Header="Credits &amp; Licenses" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/credits"/>
-                                <MenuItem Header="Security Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/security"/>
-                                <MenuItem Header="Support &amp; FAQ" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/support"/>
-                            </MenuFlyout>
-                        </Button.Flyout>
-                    </Button>
-                    <Button Classes="toolbar"
-                            Content="Save .webp"
-                            Click="CaptureToWebP_Click"
-                            ToolTip.Tip="Save a screenshot of the active module"/>
-                    <Button Classes="toolbar"
-                            Content="Capture Dock"
-                            Click="CaptureDock_Click"
-                            ToolTip.Tip="Capture a screenshot of the main Docklys dock"/>
-                    <Button Classes="toolbar"
-                            Content="📂 .webp"
-                            Click="OpenWebPFolder_Click"
-                            ToolTip.Tip="Open the OutputWebPModule folder"/>
-                    <Button Classes="toolbar"
-                            Content="📂 .dll"
-                            Click="OpenOutputModuleDllFolder_Click"
-                            ToolTip.Tip="Open the OutputModuleDLL folder"/>
-                    <Button Classes="toolbar"
-                            Content="📂 Modules"
-                            Click="OpenDocklyModulesFolder_Click"
-                            ToolTip.Tip="Open the Dockly app's Modules folder"/>
-                    <Button Classes="toolbar"
-                            Content="📂 Saves"
-                            Click="OpenSavesFolder_Click"
-                            ToolTip.Tip="Open the module saves folder (%APPDATA%\Docklys\ModuleSaves)"/>
-                    <Button Name="GitHubButton"
-                            Classes="toolbar"
-                            Content="GitHub"
-                            Click="OnGitHubClick"
-                            ToolTip.Tip="Create a GitHub repository for this module and push the source code"/>
-                    <Button Classes="toolbar"
-                            Content="Info"
-                            Click="OnInfoClick"
-                            ToolTip.Tip="Edit module description and sync from GitHub (saves to docklys.json)"/>
-                    <Button Classes="toolbar"
-                            Content="Images"
-                            Click="OnImagesClick"
-                            ToolTip.Tip="Manage module images: icon, preview screenshot, extra screenshots"/>
-                </StackPanel>
+        <Border Grid.Row="2" Classes="app-bar" BorderThickness="0,1,0,0" Padding="16,10">
+            <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Button Name="BuildDeployButton" Classes="command primary" Click="BuildAndDeploy_Click" ToolTip.Tip="Build and install this module in Docklys"><StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="M8,1 L3,9 H7 L6,15 L13,6 H9 Z"/><TextBlock Text="Build &amp; install"/></StackPanel></Button>
+                        <Button Name="DocklyLifecycleButton" Classes="command" Click="DocklyLifecycle_Click" ToolTip.Tip="Start or stop Docklys"><StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="M4,2 L14,8 L4,14 Z"/><TextBlock Text="Docklys"/></StackPanel></Button>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                        <Button Classes="command" Click="CaptureToWebP_Click" ToolTip.Tip="Save a preview image"><StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="M3,2 H10 L13,5 V14 H3 Z M5,2 V6 H11 V2 M5,10 H11"/><TextBlock Text="Save preview"/></StackPanel></Button>
+                        <Button Name="GitHubButton" Classes="command" Content="Repository" Click="OnGitHubClick" ToolTip.Tip="Create or update the project repository"/>
+                        <Button Classes="command" Content="More actions" ToolTip.Tip="Files, project details, publishing and support"><Button.Flyout><MenuFlyout Placement="Top"><MenuItem Header="Capture Docklys" Click="CaptureDock_Click"/><Separator/><MenuItem Header="Open preview images" Click="OpenWebPFolder_Click"/><MenuItem Header="Open build output" Click="OpenOutputModuleDllFolder_Click"/><MenuItem Header="Open installed modules" Click="OpenDocklyModulesFolder_Click"/><MenuItem Header="Open module saves" Click="OpenSavesFolder_Click"/><Separator/><MenuItem Header="Module information" Click="OnInfoClick"/><MenuItem Header="Manage images" Click="OnImagesClick"/><MenuItem Header="Change license" Click="OnLicenseClick"/><MenuItem Header="Publish module" Click="OnPublishClick"/><Separator/><MenuItem Header="Legal and support"><MenuItem Header="Terms of Service" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/terms-of-service"/><MenuItem Header="Privacy Policy" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/privacy-policy"/><MenuItem Header="Support &amp; FAQ" Click="OpenLegalLink_Click" Tag="https://docklys.qwqc.de/support"/></MenuItem></MenuFlyout></Button.Flyout></Button>
+                    </StackPanel>
+                </Grid>
+                <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="8">
+                    <Button Name="NewButton" Classes="command" Click="CreateModule_Click" ToolTip.Tip="Create a module"><StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="M7,2 V12 M2,7 H12"/><TextBlock Text="New module"/></StackPanel></Button>
+                    <Button Grid.Column="1" Name="ReloadButton" Classes="command" Click="ReloadModule_Click" ToolTip.Tip="Reload the current module"><StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="M12,5 V2 L15,5 M13,8 A5,5 0 1,1 11,3"/><TextBlock Text="Reload"/></StackPanel></Button>
+                    <Button Grid.Column="2" Name="ThemeButton" Classes="command" Click="ThemeButton_Click" ToolTip.Tip="Edit preview theme colors"><StackPanel Orientation="Horizontal" Spacing="6"><Path Classes="icon" Data="M8,2 A6,6 0 1,0 8,14 A2,2 0 0,0 10,12 C10,11 9,10 10,9 C11,8 14,10 14,7 A5,5 0 0,0 8,2"/><TextBlock Text="Preview theme"/></StackPanel></Button>
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"><TextBlock Text="VIEW" Classes="eyebrow" VerticalAlignment="Center"/><TextBlock Text="Zoom" Foreground="#AAB2BB" FontSize="11" VerticalAlignment="Center"/><Slider Name="ZoomSlider" Width="100" Minimum="25" Maximum="200" Value="100" ValueChanged="ZoomSlider_ValueChanged" ToolTip.Tip="Preview zoom"/><TextBlock Name="ZoomLabel" Text="100%" Width="36" FontSize="11" VerticalAlignment="Center"/><Button Name="MainAppSizeButton" Classes="command" Content="Actual size" Click="CycleMainAppSize_Click"/><ToggleButton Name="DualViewButton" Classes="command" Content="Compare" Click="ToggleDualView_Click"/><ToggleButton Name="SlidePreviewButton" Classes="command" Content="Animate" IsCheckedChanged="SlidePreviewButton_IsCheckedChanged"/></StackPanel>
+                </Grid>
             </Grid>
         </Border>
     </Grid>

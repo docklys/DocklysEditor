@@ -104,6 +104,136 @@ public partial class MainWindow
 
     // ── Info dialog ─────────────────────────────────────────────────────────────
 
+    // ── Publish ──────────────────────────────────────────────────────────────────
+
+    private async void OnPublishClick(object? sender, RoutedEventArgs e)
+    {
+        if (_catalog.Count == 0) { await ShowMessageDialog("Publish", "No theme loaded."); return; }
+        var entry = _catalog[Math.Clamp(_currentIndex, 0, _catalog.Count - 1)];
+        var meta = ReadThemeMeta(entry.Id) ?? new ThemeMeta { Name = entry.Name };
+
+        var btn = sender as Button;
+        var images = new List<string>();
+        if (btn != null) { btn.IsEnabled = false; btn.Content = "Checking…"; }
+        try { images = await FetchRemoteImageUrlsAsync(meta.GithubRepo); }
+        catch (Exception ex) { Debug.WriteLine($"[Publish] Image lookup failed: {ex.Message}"); }
+        finally { if (btn != null) { btn.IsEnabled = true; btn.Content = "🌐 Publish"; } }
+
+        var url = BuildPublishUrl("Theme", meta.Name is { Length: > 0 } n ? n : entry.Name,
+            entry.Id, meta.Version, meta.Description, meta.License, meta.GithubRepo, images);
+
+        try { Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true }); }
+        catch (Exception ex) { Debug.WriteLine($"[Publish] Failed to open browser: {ex.Message}"); }
+    }
+
+    // The one platform we can vouch for is the one the editor is running on;
+    // nothing here declares OS support, so anything else would be a guess the
+    // developer would have to notice and correct.
+    private static string CurrentPlatform() =>
+        OperatingSystem.IsWindows() ? "Windows" :
+        OperatingSystem.IsMacOS()   ? "macOS"   :
+        OperatingSystem.IsLinux()   ? "Linux"   : "";
+
+    // Only images GitHub confirms are pushed can be handed over: the browser
+    // has no access to the local Images/ folder, and a URL built by hand for an
+    // image that was never pushed would arrive as a broken thumbnail.
+    private static async Task<List<string>> FetchRemoteImageUrlsAsync(string githubRepo)
+    {
+        var urls = new List<string>();
+        if (string.IsNullOrWhiteSpace(githubRepo)) return urls;
+
+        var (owner, repo) = ParseGitHubUrl(
+            githubRepo.Contains("github.com", StringComparison.OrdinalIgnoreCase)
+                ? githubRepo : $"https://github.com/{githubRepo}");
+        if (owner == null || repo == null) return urls;
+
+        // download_url comes straight from the API, so it carries the repo's real
+        // default branch and is known-good rather than assembled from guesses.
+        var (ok, json) = await RunProcessRawAsync(ResolveGhPath(),
+            $"api repos/{owner}/{repo}/contents/Images", AppContext.BaseDirectory);
+        if (!ok || string.IsNullOrWhiteSpace(json)) return urls;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return urls;
+
+            foreach (var item in doc.RootElement.EnumerateArray())
+            {
+                if (!item.TryGetProperty("type", out var t) || t.GetString() != "file") continue;
+                if (!item.TryGetProperty("name", out var n)) continue;
+                var fileName = n.GetString() ?? "";
+                if (!fileName.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!item.TryGetProperty("download_url", out var d)) continue;
+                var dl = d.GetString();
+                if (!string.IsNullOrWhiteSpace(dl)) urls.Add(dl!);
+            }
+        }
+        catch (Exception ex) { Debug.WriteLine($"[Publish] Images listing parse failed: {ex.Message}"); }
+
+        return urls;
+    }
+
+    // RunProcessAsync truncates its log to keep dialogs readable, which would
+    // corrupt JSON. This variant returns stdout intact.
+    private static async Task<(bool ok, string output)> RunProcessRawAsync(string exe, string args, string workDir)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo(exe, args)
+            {
+                WorkingDirectory = workDir,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            using var p = Process.Start(psi);
+            if (p == null) return (false, "");
+            var stdout = await p.StandardOutput.ReadToEndAsync();
+            await p.StandardError.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            return (p.ExitCode == 0, stdout);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    private static string BuildPublishUrl(string type, string name, string idSource, string version,
+        string description, string license, string githubRepo, IReadOnlyList<string> imageUrls)
+    {
+        var q = new List<string>();
+        void Add(string key, string? value)
+        {
+            if (!string.IsNullOrWhiteSpace(value)) q.Add($"{key}={Uri.EscapeDataString(value)}");
+        }
+
+        Add("pf_type", type);
+        Add("pf_name", name);
+        Add("pf_id", SlugifyId(idSource));
+        Add("pf_version", version);
+        Add("pf_description", description);
+        Add("pf_license", license is "" or "None" ? null : license);
+        Add("pf_github", string.IsNullOrWhiteSpace(githubRepo) ? null
+            : githubRepo.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? githubRepo : $"https://github.com/{githubRepo}");
+        Add("pf_platforms", CurrentPlatform());
+
+        foreach (var img in imageUrls)
+        {
+            var file = Path.GetFileNameWithoutExtension(img);
+            if (file.Equals("icon", StringComparison.OrdinalIgnoreCase)) Add("pf_icon", img);
+            else Add("pf_shot", img);
+        }
+
+        return "https://docklys.com/DocklysEditor" + (q.Count > 0 ? "?" + string.Join("&", q) : "");
+    }
+
+    private static string SlugifyId(string name)
+    {
+        var slug = new string(name.Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-').ToArray());
+        while (slug.Contains("--")) slug = slug.Replace("--", "-");
+        return slug.Trim('-');
+    }
+
     private async void OnInfoClick(object? sender, RoutedEventArgs e)
     {
         if (_catalog.Count == 0) { await ShowMessageDialog("Info", "No theme loaded."); return; }

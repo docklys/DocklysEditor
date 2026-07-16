@@ -1,18 +1,19 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <!-- Class libraries don't copy NuGet assemblies to the build output, so a module that
-             adds a package reference would build fine yet be rejected by Dockly at load time for
-             an unresolvable reference. Push deploys these next to the module DLL (skipping
-             whatever the host already ships), so a scaffolded module works with any package. -->
-        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     </PropertyGroup>
     <ItemGroup>
-      <Compile Update="DefaultModule.axaml.cs">
-        <DependentUpon>DefaultModule.axaml</DependentUpon>
+      <Compile Update="scrcpy.axaml.cs">
+        <DependentUpon>scrcpy.axaml</DependentUpon>
       </Compile>
+    </ItemGroup>
+    <ItemGroup>
+      <!-- The server jar ships inside the DLL so the module carries its own scrcpy
+           server rather than depending on a system install. The version here must stay
+           in lockstep with AdbClient.ServerVersion: the server aborts on mismatch. -->
+      <EmbeddedResource Include="Assets\scrcpy-server" />
     </ItemGroup>
     <ItemGroup>
       <PackageReference Include="Avalonia" Version="11.3.1" />

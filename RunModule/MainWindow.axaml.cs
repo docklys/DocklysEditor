@@ -23,9 +23,13 @@ namespace RunModule;
 public partial class MainWindow : Window
 {
     private string? _lastBuildError;
-    private bool _docklyLocked;
-    private bool _canStartDockly;
-    private string? _lastDocklyExePath;
+
+    // Every distinct exe path captured the last time KillDocklyProcesses ran, so "Start
+    // Docklys" can relaunch every instance that was actually terminated — not just one.
+    // Multiple Dockly processes can be running simultaneously (the single-instance guard in
+    // Dockly/Program.cs is Linux-only), so a single scalar here silently dropped whichever
+    // instance wasn't the first one enumerated.
+    private readonly HashSet<string> _lastDocklyExePaths = new(StringComparer.OrdinalIgnoreCase);
 
     public MainWindow()
     {
@@ -37,6 +41,7 @@ public partial class MainWindow : Window
     {
         InitializeTheme();
         InitializeSkinComboBox();
+        InitializeDocklyLifecycleButton();
 #if LINUX
         X11WebViewLayoutSync.Start(this);
 #endif
@@ -216,94 +221,9 @@ public partial class MainWindow : Window
         var button = sender as Button;
         if (button == null) return;
 
-        const string originalContent = "Push to Docklys!";
-
-        // If we just deployed and Dockly is offline: launch it, then reset to original.
-        if (_canStartDockly)
-        {
-            _canStartDockly = false;
-            button.IsEnabled = false;
-            button.Content = "Starting Docklys...";
-            ToolTip.SetTip(button, null);
-
-            string? exe = _lastDocklyExePath;
-            string? searchReport = null;
-            if (exe == null || !File.Exists(exe))
-            {
-                var found = FindDocklyExecutableWithReport();
-                exe = found.exePath;
-                searchReport = found.searchReport;
-            }
-
-            string? startError = null;
-            bool started = false;
-            if (exe != null && File.Exists(exe))
-            {
-                try
-                {
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = exe,
-                        UseShellExecute = true,
-                        WorkingDirectory = Path.GetDirectoryName(exe) ?? "",
-                    });
-                    started = true;
-                    _lastDocklyExePath = exe;
-                }
-                catch (Exception startEx)
-                {
-                    startError =
-                        $"Failed to launch Docklys.\n\nExe: {exe}\n\n" +
-                        $"{startEx.GetType().Name}: {startEx.Message}\n\n{startEx.StackTrace}";
-                    Debug.WriteLine($"[Deploy] Start Docklys failed: {startEx}");
-                }
-            }
-            else
-            {
-                startError = searchReport ?? "Could not locate Dockly.Desktop.exe or Dockly.exe.";
-            }
-
-            if (started)
-            {
-                button.Content = "✓ Started";
-                ToolTip.SetTip(button, $"Launched: {exe}");
-                button.IsEnabled = true;
-                await Task.Delay(1500);
-                if (_lastBuildError == null && !_canStartDockly && !_docklyLocked)
-                {
-                    button.Content = originalContent;
-                    ToolTip.SetTip(button, null);
-                }
-            }
-            else
-            {
-                // Persist the error so the user can hover to read it and click to copy + retry.
-                Fail("Start failed", startError ?? "Unknown error launching Docklys.");
-            }
-            return;
-        }
-
-        // If Dockly is holding the DLL open: terminate it, then fall through to retry.
-        if (_docklyLocked)
-        {
-            _docklyLocked = false;
-            _lastBuildError = null;
-            button.IsEnabled = false;
-            button.Content = "Closing Docklys...";
-            ToolTip.SetTip(button, null);
-            try
-            {
-                await Task.Run(KillDocklyProcesses);
-            }
-            catch (Exception killEx)
-            {
-                Debug.WriteLine($"[Deploy] Kill Docklys failed: {killEx}");
-            }
-            // Give the OS a moment to release the file handle on the DLL.
-            await Task.Delay(500);
-            button.IsEnabled = true;
-            // fall through to the normal build+copy flow below
-        }
+        // Must match the button's Content in MainWindow.axaml — this is what the label resets to
+        // once a transient state (Building… / ✓ Deployed / error) has run its course.
+        const string originalContent = "⚡ Push to Docklys";
 
         // If in error state: copy log to clipboard, show confirmation, then rebuild.
         if (_lastBuildError != null)
@@ -353,6 +273,13 @@ public partial class MainWindow : Window
             button.Content = "Building...";
             button.IsEnabled = false;
             ToolTip.SetTip(button, null);
+
+            // Dev DLLs pushed by this tool are unsigned and land in directories Dockly's
+            // ModuleRegistry otherwise refuses to load from in a distributed build (see
+            // ModuleRegistry.IsUserManagedDirectory / ModuleSignature.Verify). Without these
+            // markers a push can succeed (file copied) while Dockly silently rejects it, which
+            // reads as "module doesn't show up in the tab" with no error anywhere.
+            DocklyRemoteControl.EnsureDevModuleFlags();
 
             // Deploy the *active* module — whichever the carousel is on —
             // not a hardcoded VolumeMixer.
@@ -423,21 +350,24 @@ public partial class MainWindow : Window
                 return;
             }
 
-            // Copy to EVERY Dockly Modules dir we can locate, not
-            // just one. Dockly's ModuleRegistry resolves the dir in
-            // priority order at startup (env var → BaseDirectory/Modules →
-            // assembly-location/Modules → walk-up → LocalAppData),
-            // so a Dockly that's been run once and a Dockly that's never
-            // been run end up reading from different folders. Copying to
-            // all of them is the only reliable way to make sure the
-            // module shows up regardless of state.
-            var targets = FindAllDocklyModulesDirs();
-            if (!targets.Contains(modulesDir, StringComparer.OrdinalIgnoreCase))
-                targets.Add(modulesDir);
-            if (targets.Count == 0) targets.Add(modulesDir);
+            // Dockly scans *every* modules directory it can find. Sending one DLL to every
+            // directory therefore registers the same module once per copy and creates duplicate
+            // tiles in Settings. Keep exactly one authoritative deployment: the directory
+            // ResolveDocklyModulesDirAsync selected. Before writing it, remove this module's old
+            // copies from every other known directory so an earlier version of the editor cannot
+            // leave duplicates behind.
+            var staleCopyErrors = RemoveDuplicateDeployedModuleCopies(assemblyName, modulesDir);
+            var targets = new List<string> { modulesDir };
+
+            // A module's private NuGet dependencies must travel with it: Dockly loads modules
+            // with Assembly.LoadFrom and rejects any whose non-framework references it can't
+            // resolve, looking for them next to the module DLL. Shipping only <name>.dll is why
+            // VolumeMixer was dropped with "unavailable runtime dependency -> NAudio.Wasapi".
+            var deps = CollectModuleDependencies(projDir, assemblyName);
 
             var copied = new List<string>();
             var failures = new List<(string Dest, string Reason)>();
+            var depFailures = new List<string>();
             foreach (var target in targets)
             {
                 var dest = Path.Combine(target, assemblyName + ".dll");
@@ -447,6 +377,24 @@ public partial class MainWindow : Window
                     File.Copy(builtDll, dest, overwrite: true);
                     copied.Add(dest);
                     Debug.WriteLine($"[Deploy] Copied {builtDll} -> {dest}");
+
+                    foreach (var dep in deps)
+                    {
+                        var depDest = Path.Combine(target, Path.GetFileName(dep));
+                        try
+                        {
+                            File.Copy(dep, depDest, overwrite: true);
+                        }
+                        catch (Exception depEx)
+                        {
+                            // Non-fatal on its own: an existing copy that's merely locked still
+                            // satisfies the load. Only a dependency that isn't there at all
+                            // actually costs us the module, so surface just those.
+                            if (!File.Exists(depDest))
+                                depFailures.Add($"{depDest} — {depEx.GetType().Name}: {depEx.Message}");
+                            Debug.WriteLine($"[Deploy] Dependency copy to {depDest} failed: {depEx.Message}");
+                        }
+                    }
                 }
                 catch (Exception copyEx)
                 {
@@ -455,18 +403,17 @@ public partial class MainWindow : Window
                 }
             }
 
-            // If we got zero successful copies and Dockly is running, the
-            // file-lock case is overwhelmingly likely — offer the same
-            // close-and-retry UX the original single-target path had.
+            // Zero successful copies while Dockly is running means the file-lock case is
+            // overwhelmingly likely (Windows locks a loaded assembly's DLL). Point at the
+            // Close button rather than silently retasking this one.
             if (copied.Count == 0 && IsDocklyRunning())
             {
-                _docklyLocked = true;
-                _lastBuildError = null;
-                button.Content = "Close Docklys!";
-                button.IsEnabled = true;
-                ToolTip.SetTip(button,
-                    $"Dockly is running and is holding {assemblyName}.dll open in every target folder.\n" +
-                    "Click to terminate Dockly and retry the push.");
+                var lockReport = string.Join("\n  ",
+                    failures.Select(f => f.Dest + "\n    " + f.Reason));
+                Fail("Copy blocked — Docklys is running",
+                    $"Docklys is running and is holding {assemblyName}.dll open in every target " +
+                    "folder, so the new build could not be written.\n\n" +
+                    "Click '■ Close Docklys', then push again.\n\nTargets:\n  " + lockReport);
                 return;
             }
 
@@ -480,31 +427,48 @@ public partial class MainWindow : Window
                 return;
             }
 
-            // Some-or-all-succeeded path.
+            // Some-or-all-succeeded path. If Dockly is already running, signal every live
+            // instance to hot-reload — Dockly never watches its Modules folders itself, so
+            // without this the copied DLL sits on disk until the user manually restarts it.
+            int reloadedInstances = IsDocklyRunning() ? DocklyRemoteControl.SignalReloadModules() : 0;
+
             var copiedReport = string.Join("\n  ", copied);
             button.Content = copied.Count == 1
                 ? "✓ Deployed"
                 : $"✓ Deployed ({copied.Count})";
             var tipMsg = $"Built: {builtDll}\n\nCopied to:\n  {copiedReport}";
+            if (deps.Count > 0)
+                tipMsg += "\n\nWith dependencies:\n  " + string.Join("\n  ", deps.Select(Path.GetFileName));
+            if (reloadedInstances > 0)
+                tipMsg += $"\n\nSignaled {reloadedInstances} running Dockly instance(s) to reload modules.";
             if (failures.Count > 0)
             {
                 tipMsg += "\n\nFailed:\n  " + string.Join("\n  ",
                     failures.Select(f => f.Dest + " — " + f.Reason));
             }
+            if (depFailures.Count > 0)
+            {
+                tipMsg += "\n\nMissing dependencies (Docklys will reject the module):\n  "
+                          + string.Join("\n  ", depFailures);
+            }
+            if (staleCopyErrors.Count > 0)
+            {
+                tipMsg += "\n\nCould not remove stale duplicate copies:\n  "
+                          + string.Join("\n  ", staleCopyErrors);
+            }
+            if (reloadedInstances == 0 && !IsDocklyRunning())
+                tipMsg += "\n\nDocklys isn't running — click '▶ Start Docklys' to launch it.";
             ToolTip.SetTip(button, tipMsg);
             button.IsEnabled = true;
             await Task.Delay(1000);
 
-            if (_lastBuildError == null && !IsDocklyRunning())
+            if (reloadedInstances > 0)
             {
-                _canStartDockly = true;
-                button.Content = "Start Docklys!";
-                ToolTip.SetTip(button, "Click to launch Dockly.");
+                button.Content = reloadedInstances == 1
+                    ? "✓ Reloaded"
+                    : $"✓ Reloaded ({reloadedInstances})";
             }
-            else
-            {
-                await ResetButton(0);
-            }
+            await ResetButton();
         }
         catch (Exception ex)
         {
@@ -598,14 +562,24 @@ public partial class MainWindow : Window
 
     private void KillDocklyProcesses()
     {
+        // Ground truth for this kill cycle — every path captured here is exactly what "Start
+        // Docklys!" should relaunch, so start from empty rather than accumulating across cycles.
+        lock (_lastDocklyExePaths) _lastDocklyExePaths.Clear();
+
         foreach (var name in DocklyProcessNames)
         {
             foreach (var p in Process.GetProcessesByName(name))
             {
                 try
                 {
-                    // Capture exe path before kill so "Start Docklys!" can relaunch it.
-                    try { _lastDocklyExePath ??= p.MainModule?.FileName; } catch { }
+                    // Capture every instance's exe path before kill (not just the first) so
+                    // "Start Docklys!" can relaunch all of them.
+                    var exe = p.MainModule?.FileName;
+                    if (exe != null) lock (_lastDocklyExePaths) _lastDocklyExePaths.Add(exe);
+                }
+                catch { }
+                try
+                {
                     p.Kill(entireProcessTree: true);
                     p.WaitForExit(3000);
                 }
@@ -639,61 +613,149 @@ public partial class MainWindow : Window
 
     // Locates Dockly's executable across both published and dev layouts, and returns a
     // human-readable search report when nothing is found (used for the error tooltip).
+    //
+    // The install root is deliberately NOT derived from the Modules directory. Modules resolves
+    // to %APPDATA%/Docklys/Modules first (it's the primary deploy target, and is created on
+    // demand), whose parent is the AppData folder — that holds modules, logs and settings but
+    // never the host, so anchoring the search there could only ever report "Could not locate
+    // Dockly.Desktop.exe or Dockly.exe" no matter how many working builds existed on disk.
     private (string? exePath, string? searchReport) FindDocklyExecutableWithReport()
     {
-        var modulesDir = FindDocklyModulesDir();
-        if (modulesDir == null)
-            return (null, "Could not locate the Dockly\\Modules directory. Build/install Dockly so its folder is reachable from this project tree.");
-
-        var docklyDir = Path.GetDirectoryName(modulesDir);
-        if (docklyDir == null)
-            return (null, $"Could not determine Dockly root from:\n{modulesDir}");
-
-        var searched = new System.Collections.Generic.List<string>();
+        var searched = new List<string>();
+        var found = new List<string>();
 
         // Only Windows builds carry the .exe suffix; on Linux/macOS the apphost is the bare
-        // project name. Searching for ".exe" alone is why this reported "Could not locate
-        // Dockly.Desktop.exe or Dockly.exe" on Linux, where that file can never exist.
+        // project name, so searching for ".exe" there can never match.
         var exeSuffix = OperatingSystem.IsWindows() ? ".exe" : "";
+        var hostNames = new[] { "Dockly.Desktop", "Dockly" };
 
-        // 1. Published / release layout: the host sits next to Modules.
-        foreach (var name in new[] { "Dockly.Desktop", "Dockly" })
+        void Consider(string path)
         {
-            var path = Path.Combine(docklyDir, name + exeSuffix);
             searched.Add(path);
-            if (File.Exists(path)) return (path, null);
+            // The apphost has no extension on Unix, so a bare-name match can also hit non-exec
+            // siblings of the managed <proj>.dll; keep only a real executable file.
+            if (File.Exists(path) && (OperatingSystem.IsWindows() || IsExecutableFile(path)))
+                found.Add(path);
         }
 
-        // 2. Dev layout: <root>/<Proj>/bin/<Config>/<TFM>/<Proj>[.exe] — pick the freshest.
-        foreach (var projDir in new[] { "Dockly.Desktop", "Dockly" })
+        // (1) A running instance knows exactly where it lives — the most reliable answer there is.
+        foreach (var name in DocklyProcessNames)
         {
-            var binDir = Path.Combine(docklyDir, projDir, "bin");
-            var hostName = projDir + exeSuffix;
-            searched.Add(Path.Combine(binDir, "**", hostName));
-            if (!Directory.Exists(binDir)) continue;
-            try
+            foreach (var p in Process.GetProcessesByName(name))
             {
-                var freshest = Directory.GetFiles(binDir, hostName, SearchOption.AllDirectories)
-                                        // The apphost has no extension on Unix, so the same glob
-                                        // also matches the managed Dockly.Desktop.dll's siblings;
-                                        // keep only a real executable file.
-                                        .Where(p => OperatingSystem.IsWindows() || IsExecutableFile(p))
-                                        .OrderByDescending(File.GetLastWriteTimeUtc)
-                                        .FirstOrDefault();
-                if (freshest != null) return (freshest, null);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[Deploy] Search under {binDir} failed: {ex.Message}");
+                try
+                {
+                    var exe = p.MainModule?.FileName;
+                    if (exe != null) Consider(exe);
+                }
+                catch { }
+                finally { p.Dispose(); }
             }
         }
+
+        // (2) Probe each candidate root for the published layout (<root>/<host>) and the dev
+        //     layout (<root>/<proj>/bin/<cfg>/<tfm>/<host>).
+        foreach (var root in CandidateDocklyRoots())
+        {
+            foreach (var host in hostNames)
+                Consider(Path.Combine(root, host + exeSuffix));
+
+            foreach (var proj in hostNames)
+            {
+                var binDir = Path.Combine(root, proj, "bin");
+                if (!Directory.Exists(binDir))
+                {
+                    searched.Add(Path.Combine(binDir, "**", proj + exeSuffix));
+                    continue;
+                }
+                try
+                {
+                    foreach (var candidate in Directory.GetFiles(binDir, proj + exeSuffix, SearchOption.AllDirectories))
+                        Consider(candidate);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[Deploy] Search under {binDir} failed: {ex.Message}");
+                }
+            }
+        }
+
+        if (found.Count > 0)
+            return (found.OrderByDescending(File.GetLastWriteTimeUtc).First(), null);
 
         var report =
-            "Could not locate Dockly.Desktop.exe or Dockly.exe.\n\n" +
-            "Searched:\n - " + string.Join("\n - ", searched) +
-            "\n\nBuild the Dockly.Desktop project (dotnet build in " +
-            Path.Combine(docklyDir, "Dockly.Desktop") + ") and try again.";
+            $"Could not locate the Docklys executable ({string.Join(" or ", hostNames.Select(h => h + exeSuffix))}).\n\n" +
+            "Searched:\n - " + string.Join("\n - ", searched.Distinct(StringComparer.OrdinalIgnoreCase)) +
+            "\n\nBuild Docklys (dotnet build Dockly.Desktop/Dockly.Desktop.csproj), or use " +
+            "'📁 Docklys Modules' and pick your Docklys install folder so its location is remembered.";
         return (null, report);
+    }
+
+    // Roots that may contain the Docklys host, most specific first.
+    private List<string> CandidateDocklyRoots()
+    {
+        var roots = new List<string>();
+        void Add(string? p)
+        {
+            if (string.IsNullOrWhiteSpace(p)) return;
+            try
+            {
+                var full = NormalizeDir(p);
+                if (Directory.Exists(full)
+                    && !IsAppDataDocklysRoot(full)
+                    && !roots.Contains(full, StringComparer.OrdinalIgnoreCase))
+                    roots.Add(full);
+            }
+            catch { /* bad path — skip */ }
+        }
+
+        // The install folder the dev previously pointed the picker at.
+        Add(SkinHost.LoadDocklyInstallDir());
+
+        // Walk up from this editor's output dir. In a dev checkout Docklys is a sibling repo
+        // (…/Docklys/DocklysEditor next to …/Docklys/Dockly), so each level and its Dockly
+        // child are both worth probing.
+        var dir = AppContext.BaseDirectory;
+        while (!string.IsNullOrEmpty(dir))
+        {
+            Add(dir);
+            Add(Path.Combine(dir, "Dockly"));
+            Add(Path.Combine(dir, "Docklys", "Dockly"));
+            var parent = Directory.GetParent(dir);
+            if (parent == null) break;
+            dir = parent.FullName;
+        }
+
+        // Install roots implied by the Modules dirs we can see — a published layout keeps the
+        // host next to Modules. Add() filters out the AppData one, which never holds a host.
+        foreach (var modulesDir in FindAllDocklyModulesDirs())
+            Add(Path.GetDirectoryName(modulesDir));
+
+        return roots;
+    }
+
+    // Absolute path with any trailing separator removed, so the same directory reached via
+    // different spellings ("…/net10.0/" vs "…/net10.0") compares and de-duplicates as one.
+    // TrimEndingDirectorySeparator leaves root paths ("/", "C:\") intact.
+    private static string NormalizeDir(string path) =>
+        Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+
+    // %APPDATA%/Docklys (and its LocalAppData twin) hold Modules, logs, settings and profiles —
+    // never the host — so they must never be treated as an install root.
+    private static bool IsAppDataDocklysRoot(string dir)
+    {
+        foreach (var special in new[] { Environment.SpecialFolder.ApplicationData,
+                                        Environment.SpecialFolder.LocalApplicationData })
+        {
+            try
+            {
+                var appDataRoot = Path.Combine(Environment.GetFolderPath(special), "Docklys");
+                if (string.Equals(NormalizeDir(dir), NormalizeDir(appDataRoot), StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            catch { }
+        }
+        return false;
     }
 
     private async void ReloadModule_Click(object sender, RoutedEventArgs e)

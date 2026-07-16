@@ -957,66 +957,6 @@ namespace spotify
 })();
 ";
 
-        // SPOTIFY-ONLY: suppress Spotify's 'You are listening on <device>' handoff modal (green
-        // Continue button + 'Listen on This Phone' on a white rounded card over a darkened,
-        // click-blocking backdrop). Rather than clicking it, detect it by text (role=dialog, or a
-        // Continue button inside a short container that also says 'listening on' / 'this phone'),
-        // then hide its full-viewport overlay and restore page interactivity. Installed at
-        // document-creation with a MutationObserver (+400ms backstop) so it vanishes as soon as it
-        // appears. Hidden via display:none !important (not removed) to avoid breaking Spotify React.
-        private const string SuppressDeviceModalScript = @"
-(function(){
-    if (window.__docklyNoHandoff) return;
-    window.__docklyNoHandoff = true;
-    function isHandoff(el){
-        if (!el) return false;
-        var t = (el.textContent || '').toLowerCase();
-        if (!t || t.length > 600) return false;
-        return t.indexOf('continue') !== -1 && (t.indexOf('listening on') !== -1 || t.indexOf('this phone') !== -1);
-    }
-    function hide(el){
-        if (!el) return;
-        try { el.style.setProperty('display','none','important'); } catch(e){}
-        try { el.style.setProperty('pointer-events','none','important'); } catch(e){}
-        try { el.style.setProperty('opacity','0','important'); } catch(e){}
-    }
-    function neutralize(){
-        var found = null;
-        var dl = document.querySelectorAll('[role=dialog],[aria-modal=true]');
-        for (var i=0;i<dl.length;i++){ if (isHandoff(dl[i])){ found = dl[i]; break; } }
-        if (!found){
-            var bs = document.querySelectorAll('button,[role=button]');
-            for (var j=0;j<bs.length && !found;j++){
-                if ((bs[j].textContent||'').toLowerCase().indexOf('continue') !== -1){
-                    var p = bs[j];
-                    for (var k=0;k<10 && p;k++){ if (isHandoff(p)){ found = p; break; } p = p.parentElement; }
-                }
-            }
-        }
-        if (!found) return;
-        var overlay = found, node = found;
-        for (var d2=0; d2<6 && node && node.parentElement; d2++){
-            var par = node.parentElement;
-            if (par === document.body || par === document.documentElement) break;
-            var cs = window.getComputedStyle(par);
-            if (cs.position === 'fixed' || cs.position === 'absolute'){
-                var r = par.getBoundingClientRect();
-                if (r.width >= window.innerWidth*0.85 && r.height >= window.innerHeight*0.85){ overlay = par; break; }
-            }
-            node = par;
-        }
-        hide(overlay);
-        if (overlay !== found) hide(found);
-        try { document.documentElement.style.overflow=''; document.body.style.overflow=''; document.body.style.removeProperty('pointer-events'); } catch(e){}
-    }
-    var pending = false;
-    function schedule(){ if (pending) return; pending = true; setTimeout(function(){ pending = false; try { neutralize(); } catch(e){} }, 150); }
-    if (document.readyState !== 'loading') neutralize();
-    window.addEventListener('load', neutralize);
-    try { new MutationObserver(schedule).observe(document.documentElement, { childList:true, subtree:true }); } catch(e){}
-    setInterval(function(){ try { neutralize(); } catch(e){} }, 400);
-})();
-";
 
         // Executes arbitrary JS in the WebView2 page via reflection. Used to drive the
         // in-page scale-to-fit zoom from Avalonia-level input when the wheel event is
@@ -1153,7 +1093,6 @@ namespace spotify
                                 addScript?.Invoke(core, new object[] { persistentScript });
                                 addScript?.Invoke(core, new object[] { ScaleToFitScript });
                                 addScript?.Invoke(core, new object[] { MouseToTouchScript });
-                                addScript?.Invoke(core, new object[] { SuppressDeviceModalScript });
 
                                 // Navigate with the new UA.
                                 var navigateMethod = coreType.GetMethod("Navigate", new[] { typeof(string) });

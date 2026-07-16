@@ -3,6 +3,11 @@
         <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <!-- A class library doesn't copy its NuGet assemblies to the build output, so NAudio
+             existed only in the package cache and never got deployed next to the module. Dockly
+             loads modules with Assembly.LoadFrom and refuses any whose non-framework references
+             it can't resolve, so the tile silently never appeared. -->
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     </PropertyGroup>
     <ItemGroup>
         <Compile Update="VolumeMixer.axaml.cs">

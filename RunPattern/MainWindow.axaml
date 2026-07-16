@@ -310,6 +310,10 @@
                             Content="Images"
                             Click="OnImagesClick"
                             ToolTip.Tip="Manage pattern images: icon, preview screenshot, extra screenshots"/>
+                    <Button Classes="toolbar"
+                            Content="🌐 Publish"
+                            Click="OnPublishClick"
+                            ToolTip.Tip="Open docklys.com/DocklysEditor in your browser with this pattern's name, version, license, description and GitHub repo pre-filled"/>
                 </StackPanel>
             </Grid>
         </Border>

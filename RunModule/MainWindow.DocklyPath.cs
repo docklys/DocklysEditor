@@ -116,23 +116,41 @@ public partial class MainWindow
             dir = parent.FullName;
         }
 
-        // (4) Running Dockly process's exe dir.
+        // (4) Every running Dockly process's exe dir — not just one. Multiple Dockly instances
+        // can be running at once (Dockly's single-instance guard is Linux-only; see
+        // Program.cs), and each may be a different build/location, so probing only the first
+        // process the OS happened to enumerate silently skipped the others.
         try
         {
-            var dockly = Process.GetProcessesByName("Dockly").FirstOrDefault()
-                         ?? Process.GetProcessesByName("Dockly.Desktop").FirstOrDefault();
-            var exe = dockly?.MainModule?.FileName;
-            if (exe != null)
+            foreach (var name in new[] { "Dockly", "Dockly.Desktop" })
             {
-                var exeDir = Path.GetDirectoryName(exe);
-                if (exeDir != null)
+                foreach (var proc in Process.GetProcessesByName(name))
                 {
-                    var m = Path.Combine(exeDir, "Modules");
-                    Directory.CreateDirectory(m); // first deploy onto a fresh install
-                    TryAdd(m);
-                    
-                    var cm = Path.Combine(exeDir, "CustomModules");
-                    TryAdd(cm);
+                    try
+                    {
+                        var exe = proc.MainModule?.FileName;
+                        if (exe != null)
+                        {
+                            var exeDir = Path.GetDirectoryName(exe);
+                            if (exeDir != null)
+                            {
+                                var m = Path.Combine(exeDir, "Modules");
+                                Directory.CreateDirectory(m); // first deploy onto a fresh install
+                                TryAdd(m);
+
+                                var cm = Path.Combine(exeDir, "CustomModules");
+                                TryAdd(cm);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[Catalog] process probe failed for PID {proc.Id}: {ex.Message}");
+                    }
+                    finally
+                    {
+                        proc.Dispose();
+                    }
                 }
             }
         }
@@ -254,5 +272,117 @@ public partial class MainWindow
         // probe for future Modules.
         SkinHost.SaveDocklyInstallDir(picked);
         return resolved;
+    }
+
+    // The module's private dependencies that have to be deployed alongside its DLL, taken from
+    // the project's own bin output — the OutputModuleDLL drop is only ever <name>.dll, so it
+    // can't answer this.
+    //
+    // Anything the Docklys host already ships is deliberately excluded. Copying our own Avalonia
+    // or Docklys.ModuleContracts next to the module would introduce a second identity of types
+    // the host also owns, which breaks the very interface casts that make a module usable — the
+    // host resolves those from its own directory just fine.
+    private List<string> CollectModuleDependencies(string projDir, string assemblyName)
+    {
+        var deps = new List<string>();
+        var binDir = Path.Combine(projDir, "bin");
+        if (!Directory.Exists(binDir)) return deps;
+
+        string? outputDir;
+        try
+        {
+            // The freshest <name>.dll marks the build output that's actually complete.
+            outputDir = Directory.GetFiles(binDir, assemblyName + ".dll", SearchOption.AllDirectories)
+                                 .OrderByDescending(File.GetLastWriteTimeUtc)
+                                 .Select(Path.GetDirectoryName)
+                                 .FirstOrDefault(d => !string.IsNullOrEmpty(d));
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Deploy] Dependency scan under {binDir} failed: {ex.Message}");
+            return deps;
+        }
+        if (outputDir == null) return deps;
+
+        string? hostDir = null;
+        try { hostDir = Path.GetDirectoryName(FindDocklyExecutableWithReport().exePath); }
+        catch (Exception ex) { Debug.WriteLine($"[Deploy] Host probe for dependency filter failed: {ex.Message}"); }
+
+        foreach (var dll in Directory.GetFiles(outputDir, "*.dll"))
+        {
+            var name = Path.GetFileName(dll);
+            if (string.Equals(name, assemblyName + ".dll", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // The contracts assembly defines IModule itself. A duplicate would make the host's
+            // "is this an IModule?" check fail against a type it considers foreign, so never
+            // ship it — the host has it by definition, even when we can't locate the host.
+            if (string.Equals(name, "Docklys.ModuleContracts.dll", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (hostDir != null && File.Exists(Path.Combine(hostDir, name)))
+                continue;
+
+            deps.Add(dll);
+        }
+        return deps;
+    }
+
+    // Deletes any previously-deployed "<assemblyName>.dll" from every Dockly Modules dir this
+    // machine knows about, and signals running instance(s) to drop it. Rename/Delete only ever
+    // touched the source project on disk — the old copies kept sitting in Dockly's Modules folders and
+    // kept loading under the old name, which is what made a renamed/deleted module reappear
+    // (or the wrong module show up) after the next push.
+    private void RemoveDeployedModuleCopies(string assemblyName)
+    {
+        foreach (var dir in FindAllDocklyModulesDirs())
+        {
+            var dll = Path.Combine(dir, assemblyName + ".dll");
+            try { if (File.Exists(dll)) File.Delete(dll); }
+            catch (Exception ex) { Debug.WriteLine($"[Deploy] Could not delete stale {dll}: {ex.Message}"); }
+
+            var sig = dll + ".sig";
+            try { if (File.Exists(sig)) File.Delete(sig); }
+            catch (Exception ex) { Debug.WriteLine($"[Deploy] Could not delete stale {sig}: {ex.Message}"); }
+        }
+
+        if (IsDocklyRunning())
+            DocklyRemoteControl.SignalReloadModules();
+    }
+
+    // Removes old copies of one module everywhere except its selected deployment directory.
+    // Dockly intentionally scans all of its supported module locations, so leaving the same DLL
+    // in a source-tree, app-data, and build-output Modules directory makes it register the module
+    // multiple times. Dependencies are deliberately left alone: several modules may share them.
+    private List<string> RemoveDuplicateDeployedModuleCopies(string assemblyName, string keepDirectory)
+    {
+        var errors = new List<string>();
+        string canonicalKeep;
+        try { canonicalKeep = NormalizeDir(keepDirectory); }
+        catch { canonicalKeep = keepDirectory; }
+
+        foreach (var dir in FindAllDocklyModulesDirs())
+        {
+            string canonicalDir;
+            try { canonicalDir = NormalizeDir(dir); }
+            catch { canonicalDir = dir; }
+            if (string.Equals(canonicalDir, canonicalKeep, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            foreach (var suffix in new[] { ".dll", ".dll.sig" })
+            {
+                var path = Path.Combine(dir, assemblyName + suffix);
+                try
+                {
+                    if (File.Exists(path)) File.Delete(path);
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"{path} — {ex.GetType().Name}: {ex.Message}");
+                    Debug.WriteLine($"[Deploy] Could not remove duplicate {path}: {ex.Message}");
+                }
+            }
+        }
+        return errors;
     }
 }

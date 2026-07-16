@@ -68,6 +68,11 @@ public partial class MainWindow
             return;
         }
 
+        // A previously pushed "<oldName>.dll" would otherwise keep loading under its old name
+        // in any Dockly it was deployed to, sitting right alongside (or instead of) the renamed
+        // module until someone notices and manually deletes it.
+        RemoveDeployedModuleCopies(oldName);
+
         // Solution file: remove the old entry, add the new one. dotnet sln
         // handles the GUID + ProjectConfigurationPlatforms entries for us.
         var slnPath = Path.Combine(solutionDir, "DefaultModule.sln");

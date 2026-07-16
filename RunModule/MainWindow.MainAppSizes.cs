@@ -26,6 +26,11 @@ namespace RunModule;
 // a few px — close enough to "see what it looks like in the app".
 public partial class MainWindow
 {
+    // Keep the snap logic aligned with the editor slider's minimum value.
+    // Without this, the 4-column "real size" preset (98.8%) can bypass the
+    // slider's visual floor and still be applied to the preview.
+    private const double MinimumZoomPercent = 100.0;
+
     // --- Mirror of the main app's grid constants (Docklys MainWindow.axaml.cs) ---
     private const double MainApp_FixedSideGap = 20.0;
     private const double MainApp_GapToTileRatio = 10.0 / 110.0;
@@ -80,7 +85,10 @@ public partial class MainWindow
     //   • else free-float at `value`.
     private static (double value, int? columns) ResolveZoom(double value, int? held)
     {
-        if (held is int hc && Math.Abs(MainAppZoomPercent(hc) - value) <= ZoomReleaseThreshold)
+        value = Math.Max(MinimumZoomPercent, value);
+
+        if (held is int hc && MainAppZoomPercent(hc) >= MinimumZoomPercent &&
+            Math.Abs(MainAppZoomPercent(hc) - value) <= ZoomReleaseThreshold)
             return (MainAppZoomPercent(hc), hc);
 
         int? bestCols = null;
@@ -88,12 +96,15 @@ public partial class MainWindow
         double bestVal = value;
         foreach (var c in MainAppColumnConfigs)
         {
-            double d = Math.Abs(MainAppZoomPercent(c) - value);
+            double zoom = MainAppZoomPercent(c);
+            if (zoom < MinimumZoomPercent) continue;
+
+            double d = Math.Abs(zoom - value);
             if (d <= bestDist)
             {
                 bestDist = d;
                 bestCols = c;
-                bestVal = MainAppZoomPercent(c);
+                bestVal = zoom;
             }
         }
         return (bestCols.HasValue ? bestVal : value, bestCols);
@@ -106,7 +117,9 @@ public partial class MainWindow
         if (slider == null) return;
         try
         {
-            slider.Ticks = new AvaloniaList<double>(MainAppColumnConfigs.Select(MainAppZoomPercent));
+            slider.Ticks = new AvaloniaList<double>(MainAppColumnConfigs
+                .Select(MainAppZoomPercent)
+                .Where(zoom => zoom >= MinimumZoomPercent));
             slider.TickPlacement = TickPlacement.Outside;
             slider.IsSnapToTickEnabled = false; // we do our own magnetic snap
         }
@@ -136,7 +149,11 @@ public partial class MainWindow
         if (_zoomSnapColumns.HasValue)
         {
             idx = Array.IndexOf(MainAppColumnConfigs, _zoomSnapColumns.Value);
-            idx = (idx + 1) % MainAppColumnConfigs.Length;
+            do
+            {
+                idx = (idx + 1) % MainAppColumnConfigs.Length;
+            }
+            while (MainAppZoomPercent(MainAppColumnConfigs[idx]) < MinimumZoomPercent);
         }
         else
         {
@@ -145,7 +162,10 @@ public partial class MainWindow
             double bestDist = double.MaxValue;
             for (int i = 0; i < MainAppColumnConfigs.Length; i++)
             {
-                double d = Math.Abs(MainAppZoomPercent(MainAppColumnConfigs[i]) - slider.Value);
+                double zoom = MainAppZoomPercent(MainAppColumnConfigs[i]);
+                if (zoom < MinimumZoomPercent) continue;
+
+                double d = Math.Abs(zoom - slider.Value);
                 if (d < bestDist) { bestDist = d; idx = i; }
             }
         }

@@ -73,7 +73,10 @@ public partial class MainWindow
         var first = File.ReadLines(lf).FirstOrDefault("") ?? "";
         if (first.Contains("MIT",    StringComparison.OrdinalIgnoreCase)) return "MIT";
         if (first.Contains("Apache", StringComparison.OrdinalIgnoreCase)) return "Apache 2.0";
-        if (first.Contains("GPL",    StringComparison.OrdinalIgnoreCase)) return "GPLv3";
+        // GenerateLicenseFile writes the GPL's real title, which never contains
+        // the literal "GPL" — matching only that let a GPLv3 pick decay to None.
+        if (first.Contains("GPL",             StringComparison.OrdinalIgnoreCase) ||
+            first.Contains("GENERAL PUBLIC",  StringComparison.OrdinalIgnoreCase)) return "GPLv3";
         return current;
     }
 
@@ -144,6 +147,215 @@ public partial class MainWindow
         if (rest.EndsWith(".git", StringComparison.OrdinalIgnoreCase)) rest = rest[..^4];
         var parts = rest.Split('/');
         return parts.Length >= 2 ? (parts[0], parts[1]) : (null, null);
+    }
+
+    // ── Publish ──────────────────────────────────────────────────────────────────
+
+    private async void OnPublishClick(object? sender, RoutedEventArgs e)
+    {
+        if (_catalog.Count == 0) { await ShowMessageDialog("Publish", "No module loaded."); return; }
+        var entry = _catalog[Math.Clamp(_currentIndex, 0, _catalog.Count - 1)];
+        var folder = Path.GetDirectoryName(entry.CsprojPath)!;
+        var meta = ReadMeta(folder) ?? new DocklysMeta { Name = entry.FolderName, Type = "module" };
+        var (tileW, tileH) = ReadCurrentTileSize(folder);
+
+        // Asking GitHub which images exist is a network round-trip.
+        var btn = sender as Button;
+        var images = new List<string>();
+        if (btn != null) { btn.IsEnabled = false; btn.Content = "Checking…"; }
+        try { images = await FetchRemoteImageUrlsAsync(meta.GithubRepo); }
+        catch (Exception ex) { Debug.WriteLine($"[Publish] Image lookup failed: {ex.Message}"); }
+        finally { if (btn != null) { btn.IsEnabled = true; btn.Content = "🌐 Publish"; } }
+
+        var url = BuildPublishUrl("Module", meta.Name is { Length: > 0 } n ? n : entry.FolderName,
+            entry.FolderName, meta.Version, meta.Description, meta.License, meta.GithubRepo,
+            tileW, tileH, images);
+
+        try { Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true }); }
+        catch (Exception ex) { Debug.WriteLine($"[Publish] Failed to open browser: {ex.Message}"); }
+    }
+
+    // The one platform we can vouch for is the one the editor is running on;
+    // nothing in the module declares its OS support, so anything else would be
+    // a guess the developer would have to notice and correct.
+    private static string CurrentPlatform() =>
+        OperatingSystem.IsWindows() ? "Windows" :
+        OperatingSystem.IsMacOS()   ? "macOS"   :
+        OperatingSystem.IsLinux()   ? "Linux"   : "";
+
+    // Only images GitHub confirms are pushed can be handed over: the browser
+    // has no access to the local Images/ folder, and a URL built by hand for an
+    // image that was never pushed would arrive as a broken thumbnail.
+    private static async Task<List<string>> FetchRemoteImageUrlsAsync(string githubRepo)
+    {
+        var urls = new List<string>();
+        if (string.IsNullOrWhiteSpace(githubRepo)) return urls;
+
+        var (owner, repo) = ParseGitHubUrl(
+            githubRepo.Contains("github.com", StringComparison.OrdinalIgnoreCase)
+                ? githubRepo : $"https://github.com/{githubRepo}");
+        if (owner == null || repo == null) return urls;
+
+        // download_url comes straight from the API, so it carries the repo's real
+        // default branch and is known-good rather than assembled from guesses.
+        var (ok, json) = await RunProcessRawAsync(ResolveGhPath(),
+            $"api repos/{owner}/{repo}/contents/Images", AppContext.BaseDirectory);
+        if (!ok || string.IsNullOrWhiteSpace(json)) return urls;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return urls;
+
+            foreach (var item in doc.RootElement.EnumerateArray())
+            {
+                if (!item.TryGetProperty("type", out var t) || t.GetString() != "file") continue;
+                if (!item.TryGetProperty("name", out var n)) continue;
+                var fileName = n.GetString() ?? "";
+                if (!fileName.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!item.TryGetProperty("download_url", out var d)) continue;
+                var dl = d.GetString();
+                if (!string.IsNullOrWhiteSpace(dl)) urls.Add(dl!);
+            }
+        }
+        catch (Exception ex) { Debug.WriteLine($"[Publish] Images listing parse failed: {ex.Message}"); }
+
+        return urls;
+    }
+
+    // RunProcessAsync truncates its log to keep dialogs readable, which would
+    // corrupt JSON. This variant returns stdout intact.
+    private static async Task<(bool ok, string output)> RunProcessRawAsync(string exe, string args, string workDir)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo(exe, args)
+            {
+                WorkingDirectory = workDir,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            using var p = Process.Start(psi);
+            if (p == null) return (false, "");
+            var stdout = await p.StandardOutput.ReadToEndAsync();
+            await p.StandardError.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            return (p.ExitCode == 0, stdout);
+        }
+        catch (Exception ex) { return (false, ex.Message); }
+    }
+
+    private static string BuildPublishUrl(string type, string name, string idSource, string version,
+        string description, string license, string githubRepo, int tileWidth, int tileHeight,
+        IReadOnlyList<string> imageUrls)
+    {
+        var q = new List<string>();
+        void Add(string key, string? value)
+        {
+            if (!string.IsNullOrWhiteSpace(value)) q.Add($"{key}={Uri.EscapeDataString(value)}");
+        }
+
+        Add("pf_type", type);
+        Add("pf_name", name);
+        Add("pf_id", SlugifyId(idSource));
+        Add("pf_version", version);
+        Add("pf_description", description);
+        Add("pf_license", license is "" or "None" ? null : license);
+        Add("pf_github", string.IsNullOrWhiteSpace(githubRepo) ? null
+            : githubRepo.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? githubRepo : $"https://github.com/{githubRepo}");
+        Add("pf_tile_w", tileWidth  > 0 ? tileWidth.ToString()  : null);
+        Add("pf_tile_h", tileHeight > 0 ? tileHeight.ToString() : null);
+        Add("pf_platforms", CurrentPlatform());
+
+        foreach (var img in imageUrls)
+        {
+            var file = Path.GetFileNameWithoutExtension(img);
+            if (file.Equals("icon", StringComparison.OrdinalIgnoreCase)) Add("pf_icon", img);
+            else Add("pf_shot", img);
+        }
+
+        return "https://docklys.com/DocklysEditor" + (q.Count > 0 ? "?" + string.Join("&", q) : "");
+    }
+
+    private static string SlugifyId(string name)
+    {
+        var slug = new string(name.Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-').ToArray());
+        while (slug.Contains("--")) slug = slug.Replace("--", "-");
+        return slug.Trim('-');
+    }
+
+    // ── License switcher ────────────────────────────────────────────────────────
+
+    // The license is otherwise fixed at creation time: it is only ever read back
+    // out of LICENSE.txt, so without this there is no way to change your mind.
+    private async void OnLicenseClick(object? sender, RoutedEventArgs e)
+    {
+        if (_catalog.Count == 0) { await ShowMessageDialog("License", "No module loaded."); return; }
+        var entry  = _catalog[Math.Clamp(_currentIndex, 0, _catalog.Count - 1)];
+        var folder = Path.GetDirectoryName(entry.CsprojPath)!;
+        var meta   = ReadMeta(folder) ?? new DocklysMeta { Name = entry.FolderName, Type = "module" };
+
+        var options    = new[] { "None", "MIT", "Apache 2.0", "GPLv3" };
+        var licenseBox = new ComboBox { ItemsSource = options, Width = 320 };
+        licenseBox.SelectedItem = options.Contains(meta.License) ? meta.License : "None";
+
+        var ok     = new Button { Content = "Save", IsDefault = true, Padding = new Thickness(16, 4) };
+        var cancel = new Button { Content = "Cancel", IsCancel = true, Padding = new Thickness(16, 4),
+                                  Margin = new Thickness(8, 0, 0, 0) };
+
+        var w = new Window
+        {
+            Title = $"License — {meta.Name}",
+            Width = 420,
+            SizeToContent = SizeToContent.Height,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                Spacing = 6,
+                Children =
+                {
+                    new TextBlock { Text = "License", Foreground = Brushes.White },
+                    licenseBox,
+                    new TextBlock
+                    {
+                        Text = "Rewrites LICENSE.txt and updates docklys.json. Choosing None removes LICENSE.txt.",
+                        Foreground = Brushes.Gray, FontSize = 11, TextWrapping = TextWrapping.Wrap,
+                    },
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Margin = new Thickness(0, 12, 0, 0),
+                        Children = { ok, cancel },
+                    },
+                },
+            },
+        };
+        StyleDialog(w);
+
+        ok.Click += (_, _) =>
+        {
+            var picked = licenseBox.SelectedItem?.ToString() ?? "None";
+            try
+            {
+                var licensePath = Path.Combine(folder, "LICENSE.txt");
+                if (picked == "None") { if (File.Exists(licensePath)) File.Delete(licensePath); }
+                else GenerateLicenseFile(folder, picked);
+
+                meta.License = picked;
+                WriteMeta(folder, meta);
+                CopyMetaToOutput(folder, "OutputModuleDLL");
+            }
+            catch (Exception ex) { Debug.WriteLine($"[License] Failed to apply {picked}: {ex.Message}"); }
+            w.Close();
+        };
+        cancel.Click += (_, _) => w.Close();
+
+        await w.ShowDialog(this);
     }
 
     // ── Info dialog ─────────────────────────────────────────────────────────────

@@ -192,6 +192,10 @@ public partial class MainWindow
             }
         }
 
+        // A previously pushed "<folderName>.dll" would otherwise keep loading in any Dockly it
+        // was deployed to, even though the source module no longer exists.
+        RemoveDeployedModuleCopies(folderName);
+
         // Re-scan source tree so the catalog reflects the deletion.
         LoadCatalog();
     }
