@@ -447,7 +447,7 @@ public partial class MainWindow
     {
         var lower = fn.ToLowerInvariant();
         if (lower == $"{themeId.ToLowerInvariant()}-icon.webp") return Brushes.LightGreen;
-        if (lower == $"{themeId.ToLowerInvariant()}-preview.webp") return Brushes.LightSkyBlue;
+        if (lower == $"{themeId.ToLowerInvariant()}-preview.webp") return Brushes.LightGray;
         return Brushes.White;
     }
 }

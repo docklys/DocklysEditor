@@ -24,5 +24,8 @@
     <Application.Styles>
         <StyleInclude Source="avares://Semi.Avalonia/Index.axaml" />
         <StyleInclude Source="avares://Semi.Avalonia.ColorPicker/Index.axaml" />
+        <Style Selector="MenuItem[Header='Capture Docklys']">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
     </Application.Styles>
 </Application>

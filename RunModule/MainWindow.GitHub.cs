@@ -127,7 +127,7 @@ public partial class MainWindow
         else
         {
             textPanel.Children.Add(new TextBlock { Text = "Please install it manually from:", Foreground = Brushes.White });
-            var linkBtn = new Button { Content = "https://cli.github.com", Foreground = Brushes.SkyBlue, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = Avalonia.Input.Cursor.Parse("Hand"), Padding = new Thickness(0) };
+            var linkBtn = new Button { Content = "https://cli.github.com", Foreground = Brushes.White, Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = Avalonia.Input.Cursor.Parse("Hand"), Padding = new Thickness(0) };
             linkBtn.Click += (_, _) => Process.Start(new ProcessStartInfo("https://cli.github.com") { UseShellExecute = true });
             textPanel.Children.Add(linkBtn);
             textPanel.Children.Add(new TextBlock { Text = "After installation, run 'gh auth login' in a terminal.", TextWrapping = TextWrapping.Wrap, Foreground = Brushes.White });
@@ -207,7 +207,7 @@ public partial class MainWindow
     {
         if (await IsGhAuthenticated()) return true;
 
-        var loginBtn = new Button { Content = "Login to GitHub", Padding = new Thickness(14, 4), Background = Brushes.DarkBlue, Foreground = Brushes.White };
+        var loginBtn = new Button { Content = "Login to GitHub", Padding = new Thickness(14, 4), Background = Brushes.DimGray, Foreground = Brushes.White };
         var cancel = new Button { Content = "Cancel", Padding = new Thickness(14, 4), Margin = new Thickness(8, 0, 0, 0) };
         var buttonRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0), Children = { loginBtn, cancel } };
 

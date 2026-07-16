@@ -202,7 +202,7 @@ public partial class MainWindow : Window
             Color1 = C("ColorColorBackground", Color.Parse("#2A2D31")),
             Color2 = C("ColorColor2Background", Color.Parse("#1A1C1F")),
             Color3 = C("ColorColor3Background", Colors.White),
-            Accent = C("ColorAccent", Color.Parse("#4F9CF9")),
+            Accent = C("ColorAccent", Color.Parse("#E7EAED")),
             Font = C("ColorFont", Color.Parse("#EDEDED")),
             GetSetting = bag.Get,
             SetSetting = bag.Set,
@@ -225,7 +225,7 @@ public partial class MainWindow : Window
     private static Control BuildPreviewCard(IPlugin plugin, Control view)
     {
         var font = ResolveBrush("ColorFont", Brushes.White);
-        var accent = ResolveBrush("ColorAccent", Brushes.SteelBlue);
+        var accent = ResolveBrush("ColorAccent", new SolidColorBrush(Color.Parse("#E7EAED")));
         var bg = ResolveBrush("ColorModuleBackground", Brushes.DimGray);
         var border = ResolveBrush("ColorModuleBorder", Brushes.Gray);
 

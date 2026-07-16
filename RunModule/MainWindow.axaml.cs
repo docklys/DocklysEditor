@@ -132,7 +132,11 @@ public partial class MainWindow : Window
         if (slot == null || control == null) return;
 
         var scale = percent / 100.0;
-        control.RenderTransformOrigin = new RelativePoint(0.5, 0.5, RelativeUnit.Relative);
+        // The layout slot is deliberately reduced to the scaled footprint.
+        // Scale from its top-left corner so the visual stays entirely inside
+        // that slot; a centered transform overhangs on every side and gets
+        // clipped as soon as the preview drops below 100%.
+        control.RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Relative);
         control.RenderTransform = new ScaleTransform(scale, scale);
 
         // RenderTransform scales the *visual* but not the layout slot — size

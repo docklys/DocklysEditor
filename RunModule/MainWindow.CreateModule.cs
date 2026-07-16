@@ -488,6 +488,12 @@ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>";
         w.Resources["SystemAccentColorDark1"] = Color.Parse("#777777");
         w.Resources["SystemAccentColorDark2"] = Color.Parse("#666666");
         w.Resources["SystemAccentColorDark3"] = Color.Parse("#555555");
+        w.Resources["ColorAccent"] = new SolidColorBrush(Color.Parse("#E7EAED"));
+        w.Resources["ColorAccentBrush"] = new SolidColorBrush(Color.Parse("#E7EAED"));
+        w.Resources["SystemControlHighlightAccentBrush"] = new SolidColorBrush(Color.Parse("#E7EAED"));
+        w.Resources["SystemControlHighlightAccentBrush2"] = new SolidColorBrush(Color.Parse("#C7CDD3"));
+        w.Resources["SystemControlForegroundBaseHighBrush"] = Brushes.White;
+        w.Resources["SystemControlForegroundBaseMediumBrush"] = new SolidColorBrush(Color.Parse("#C7CDD3"));
     }
     //
     // Built inline rather than using MessageBox.Avalonia's input API

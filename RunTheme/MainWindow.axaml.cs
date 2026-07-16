@@ -139,7 +139,7 @@ public partial class MainWindow : Window
         var bg2        = B("Color2Background",       "#111111");
         var moduleBg   = B("ColorModuleBackground",  "#1F1F1F");
         var moduleBdr  = B("ColorModuleBorder",      "#2F2F2F");
-        var accent     = B("ColorAccent",            "#4F9CF9");
+        var accent     = B("ColorAccent",            "#E7EAED");
         var font       = B("ColorFont",              "#EDEDED");
         var moduleFont = B("ColorModuleFont",        "#FFFFFF");
         var windowBdr  = B("ColorWindowBorder",      "#000000");

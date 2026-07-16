@@ -21,6 +21,9 @@
         <FluentTheme />
         <semi:SemiTheme Locale="zh-CN" />
         <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
+        <Style Selector="MenuItem[Header='Capture Docklys']">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
 
         <!-- Scoped overrides for the Theme Settings and ColorPicker -->
         <Style Selector="Border#ThemeSettingsOverlay TextBlock">

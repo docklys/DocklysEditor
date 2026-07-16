@@ -137,7 +137,7 @@ public partial class MainWindow : Window
             Color1 = C("ColorColorBackground", Color.Parse("#2A2D31")),
             Color2 = C("ColorColor2Background", Color.Parse("#1A1C1F")),
             Color3 = C("ColorColor3Background", Colors.White),
-            Accent = C("ColorAccent", Color.Parse("#4F9CF9")),
+            Accent = C("ColorAccent", Color.Parse("#E7EAED")),
             Density = 0.03
         };
     }

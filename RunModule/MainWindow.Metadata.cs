@@ -740,7 +740,7 @@ public partial class MainWindow
     private static IBrush ImageLabelColor(string filename) => filename.ToLowerInvariant() switch
     {
         "icon.webp" or "icon.png"       => Brushes.LightGreen,
-        "preview.webp" or "preview.png" => Brushes.LightSkyBlue,
+        "preview.webp" or "preview.png" => Brushes.LightGray,
         _ => Brushes.White,
     };
 
