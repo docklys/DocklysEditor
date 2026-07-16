@@ -49,6 +49,5 @@
         <ProjectReference Include="..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj" />
         <ProjectReference Include="..\VolumeMixer\VolumeMixer.csproj" />
         <ProjectReference Include="..\spotify\spotify.csproj" />
-        <ProjectReference Include="..\VChat\VChat.csproj" />
     </ItemGroup>
 </Project>
