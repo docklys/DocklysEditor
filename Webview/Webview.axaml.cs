@@ -325,15 +325,17 @@ namespace Webview
                 step++;
                 if (step == 5)
                 {
-                    NavDbg("SELFTEST step5: open settings (hides webview)");
-                    ToggleSettings(true);
+                    var toggle = Environment.GetEnvironmentVariable("WEBVIEW_SELFTEST_TOGGLE") == "1";
+                    NavDbg($"SELFTEST step5: toggleSettings={toggle}");
+                    if (toggle) ToggleSettings(true);
                 }
                 else if (step == 6)
                 {
+                    var toggle = Environment.GetEnvironmentVariable("WEBVIEW_SELFTEST_TOGGLE") == "1";
                     const string testUrl = "https://www.youtube.com/watch?v=DZoeGR_tatA";
-                    NavDbg($"SELFTEST step6: close settings + navigate to {testUrl}");
+                    NavDbg($"SELFTEST step6: navigate to {testUrl} (toggle={toggle})");
                     if (UrlTextBox != null) UrlTextBox.Text = testUrl;
-                    ToggleSettings(false);
+                    if (toggle) ToggleSettings(false);
                     var normalized = NormalizeUrl(UrlTextBox?.Text);
                     if (normalized != null) { CurrentUrl = normalized; NavigateToCurrentUrl(); }
                 }
@@ -346,55 +348,39 @@ namespace Webview
             timer.Start();
         }
 
+        // Loads CurrentUrl into the webview. AvaloniaWebView/WebKitGTK only honor a navigation
+        // on a webview's FIRST load: assigning `Url` again — or calling the control/platform
+        // `Navigate(Uri)` — after init never reaches WebKit (verified: no NavigationStarting
+        // fires, page stays blank), and calling the native WebKit.WebView.LoadUri off the GTK
+        // thread aborts the process. The one path that reliably works is a fresh webview's
+        // initial load, so to change the URL at runtime we tear the webview down and recreate it.
         private void NavigateToCurrentUrl()
         {
-            NavDbg($"NavigateToCurrentUrl enter: CurrentUrl='{CurrentUrl}' webViewNull={_webView == null}");
-            if (_webView == null) return;
-            if (!Uri.TryCreate(CurrentUrl, UriKind.Absolute, out var uri))
-            {
-                NavDbg($"  TryCreate FAILED for '{CurrentUrl}'");
-                return;
-            }
-
-            // Defer to the UI thread AFTER the current layout pass. When this is called from
-            // the settings "DONE" handler the WebView was just re-shown (IsVisible false->true);
-            // on WebKitGTK the native surface is mid-re-realization, and a Url set issued right
-            // then is silently dropped — the page never loads. Posting at Background priority
-            // lets the re-show settle first so the navigation actually takes.
+            if (!Uri.TryCreate(CurrentUrl, UriKind.Absolute, out _)) return;
             Dispatcher.UIThread.Post(() =>
             {
-                if (_webView == null) { NavDbg("  deferred: webView became null"); return; }
                 try
                 {
-                    var t = _webView.GetType();
-                    // AvaloniaWebView navigates to `Url` only on the FIRST load; assigning Url
-                    // again after the browser is initialized changes the property but starts no
-                    // navigation (verified: no NavigationStarting fires -> blank page). Call the
-                    // Navigate() method to actually load a new page at runtime.
-                    System.Reflection.MethodInfo? navUri = null, navStr = null;
-                    foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.Instance))
+                    NavDbg($"Recreate webview for CurrentUrl='{CurrentUrl}'");
+                    var old = _webView;
+                    _webViewBoundsSub?.Dispose();
+                    _webViewBoundsSub = null;
+                    _webViewHwnd = IntPtr.Zero;
+                    _mobileUaApplied = false;
+                    _webView = null;
+                    if (old != null)
                     {
-                        if (m.Name != "Navigate") continue;
-                        var ps = m.GetParameters();
-                        if (ps.Length != 1) continue;
-                        if (ps[0].ParameterType == typeof(Uri)) navUri = m;
-                        else if (ps[0].ParameterType == typeof(string)) navStr = m;
+                        WebViewContainer.Children.Remove(old);
+                        (old as IDisposable)?.Dispose();
                     }
-                    NavDbg($"  navUri={navUri != null} navStr={navStr != null} target='{uri}' visible={_webView.IsVisible} bounds={_webView.Bounds.Width}x{_webView.Bounds.Height}");
-                    if (navUri != null) navUri.Invoke(_webView, new object[] { uri });
-                    else if (navStr != null) navStr.Invoke(_webView, new object[] { uri.ToString() });
-                    else
-                    {
-                        NavDbg("  no Navigate method; falling back to Url property");
-                        t.GetProperty("Url", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy)
-                            ?.SetValue(_webView, uri);
-                    }
-                    NavDbg("  navigate issued");
+                    // The recreated control's Loaded handler navigates to CurrentUrl (the working
+                    // first-load path) and re-applies the mobile UA / injected scripts.
+                    TryCreateWebView();
                 }
                 catch (Exception ex)
                 {
-                    NavDbg($"  deferred EXCEPTION: {ex.GetType().Name}: {ex.Message} / inner: {ex.InnerException?.Message}");
-                    Console.WriteLine($"[Webview] NavigateToCurrentUrl failed: {ex.Message}");
+                    NavDbg($"Recreate failed: {ex.Message}");
+                    Console.WriteLine($"[Webview] NavigateToCurrentUrl (recreate) failed: {ex.Message}");
                 }
             }, DispatcherPriority.Background);
         }
