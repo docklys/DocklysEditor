@@ -197,14 +197,8 @@ namespace VolumeMixer
 
                     if (icon != null)
                     {
-                        var iconImage = new Avalonia.Controls.Image
-                        {
-                            Source = icon,
-                            Width = 12,
-                            Height = 12,
-                            Stretch = Avalonia.Media.Stretch.Uniform,
-                            VerticalAlignment = VerticalAlignment.Center
-                        };
+                        var iconImage = CreateRoundedIcon(icon, 12, 3);
+                        iconImage.VerticalAlignment = VerticalAlignment.Center;
                         contentPanel.Children.Add(iconImage);
                     }
 
@@ -449,15 +443,30 @@ namespace VolumeMixer
                 return;
             }
 
+            button.Content = CreateRoundedIcon(icon, 16, 4);
+            ToolTip.SetTip(button, fallbackText);
+        }
+
+        // Wraps an icon in a clipping Border so the (square) glyph is shown with rounded
+        // corners. ClipToBounds + CornerRadius makes the Border mask its child to the
+        // rounded rectangle.
+        private static Border CreateRoundedIcon(IImage icon, double size, double radius)
+        {
             var image = new Avalonia.Controls.Image
             {
                 Source = icon,
-                Width = 16,
-                Height = 16,
-                Stretch = Avalonia.Media.Stretch.Uniform
+                Width = size,
+                Height = size,
+                Stretch = Avalonia.Media.Stretch.UniformToFill
             };
-            button.Content = image;
-            ToolTip.SetTip(button, fallbackText);
+            return new Border
+            {
+                Width = size,
+                Height = size,
+                CornerRadius = new Avalonia.CornerRadius(radius),
+                ClipToBounds = true,
+                Child = image
+            };
         }
 
         private void UpdateAudioSessionIcons()
