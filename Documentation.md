@@ -4,7 +4,7 @@ Welcome. This guide walks you through everything you need to build a module for 
 
 > **Mental model.** A *module* is a small Avalonia `UserControl` you compile to a single `.dll`. Docklys's main window scans a folder of these DLLs, instantiates the ones it finds, and arranges them on a tiled grid. Your module is a small island of UI that runs inside the host's window.
 
-For a terse, machine-grade reference, see [`ai_architecture.md`](./ai_architecture.md). For Editor specifics, see [`README.md`](./README.md).
+For a terse, machine-grade reference, see [`AIArchitecture.md`](./AIArchitecture.md). For Editor specifics, see [`README.md`](./README.md).
 
 ## Contents
 
@@ -16,20 +16,23 @@ For a terse, machine-grade reference, see [`ai_architecture.md`](./ai_architectu
 6. [Tabs (Profiles) & Re-rendering](#6-tabs-profiles--re-rendering)
 7. [Saving State to `%APPDATA%`](#7-saving-state-to-appdata)
 8. [The Theme System (Skins)](#8-the-theme-system-skins)
-9. [Common Pitfalls](#9-common-pitfalls)
+9. [Linux Desktop Support](#9-linux-desktop-support)
+10. [Dockly.Browser (WebAssembly)](#10-docklybrowser-webassembly)
+11. [Browser and WebView Modules](#11-browser-and-webview-modules)
+12. [Common Pitfalls](#12-common-pitfalls)
 
 ---
 
 ## 1. The 30-Second Tour
 
 ```text
-DocklysModuleEditor/
+DocklysEditor/
 ├── DefaultModule/              ← copy-this-to-start template
 ├── VolumeMixer/                ← reference module, real-world example
 ├── Docklys.ModuleContracts/    ← IModule interface + SkinKeys constants
 └── RunModule/                  ← the editor: preview your module live
 
-Docklys/Dockly/
+Dockly/Dockly/
 ├── Skins/Default.axaml         ← the skins your module renders under
 ├── Modules/ModuleRegistry.cs   ← the loader that finds your DLL
 ├── Modules/              ← drop your built DLL here
@@ -42,17 +45,17 @@ Docklys/Dockly/
 
 You have three options to create a module:
 
-### Option A — "Create Module" Button in RunModule (Easiest)
+### Option A — "New module" Button in RunModule (Easiest)
 1. Open `DefaultModule.sln` and run the `RunModule` project.
-2. Click **✚ Create Module**.
+2. Click **New module** in the top bar.
 3. Enter a name (e.g. `Clock`).
-4. Restart the editor to see your module in the carousel.
+4. Let the editor create and build the project; the module then appears in the carousel.
 
 ### Option B — `dotnet new docklysmodule`
 From the repo root:
 ```sh
-dotnet new --install ./DocklysModuleEditor/DefaultModule
-dotnet new docklysmodule -n Clock -o ./DocklysModuleEditor/Clock
+dotnet new --install ./DocklysEditor/DefaultModule
+dotnet new docklysmodule -n Clock -o ./DocklysEditor/Clock
 ```
 
 ### Option C — Manual Copy
@@ -108,6 +111,7 @@ namespace Clock
 ### Other Core MCCP Interfaces
 - **`IResizable`**: Opt-in for runtime tile resizing. Use `TileResizeRequested` to notify the host, and implement `SetTileSize(w, h)` to react.
 - **`IInteractionFreezable`**: Implement this if you have native overlays (like WebView2). The host calls `FreezeInteraction()` when dragging or showing settings to prevent the native window from capturing input.
+- **`IWebViewModule`**: Declares browser content and policy while Docklys owns the native browser, geometry, cookies, and platform workarounds. See [Browser and WebView Modules](#11-browser-and-webview-modules).
 
 ---
 
@@ -117,8 +121,12 @@ When Dockly starts, `ModuleRegistry` scans for built-in modules and external DLL
 
 **Where to put your `.dll`:**
 1. `$DOCKLY_MODULES_PATH` (env var)
-2. Next to the executable in `Modules/`
-3. `%APPDATA%/Docklys/Modules/`
+2. `%APPDATA%/Docklys/Modules/`
+3. Next to the executable in `Modules/`
+4. A source-tree `Modules/` directory found by walking upward
+5. The platform local-app-data `Docklys/Modules/` fallback
+
+Distributed builds require a valid module signature and block legacy user-managed in-process directories. Developer loading can be enabled with the explicit environment variables or marker files described in `ModuleRegistry.cs`; do not ask end users to disable these checks.
 
 **Module Reloading:**
 There is no filesystem watcher in the main app. Dropping a DLL requires restarting Docklys. However, the Editor (`RunModule`) handles **Hot-Reload** via a custom `AssemblyLoadContext`. When you rebuild `RunModule`, it re-loads the DLLs into memory.
@@ -213,10 +221,116 @@ Reference `SkinKeys` keys via `{DynamicResource}`:
 
 ---
 
-## 9. Common Pitfalls
+## 9. Linux Desktop Support
 
-- **Module doesn't show up in Dockly:** DLL not in `CustomModules/`, `Type.Name` conflict, or your class isn't `UserControl` + `IModule`.
+Docklys and `RunModule` compile Linux-specific code behind the `LINUX` constant. The desktop host targets .NET 10 and uses Avalonia's X11/XWayland path for native browser embedding.
+
+### Runtime paths and module behavior
+
+- `Environment.SpecialFolder.ApplicationData` resolves to the user's XDG configuration location, normally `~/.config`. Module state therefore lives under `~/.config/Docklys/ModuleSaves/`.
+- Linux module DLLs still use the same `IModule`, `IResizable`, theme, and persistence contracts as Windows modules.
+- A module may expose a `SupportedPlatforms` metadata property, but it must still degrade safely when constructed elsewhere. `RunModule` intentionally previews constructible modules even when their metadata does not list the developer's OS, so layout and skin work remains possible.
+- Platform-specific services must be guarded with `OperatingSystem.IsLinux()`, `OperatingSystem.IsWindows()`, or compile-time constants. Do not execute Windows APIs from a constructor merely because the UI can be previewed on Linux.
+
+### Linux native-browser requirements
+
+Desktop webviews use WebKitGTK through `WebView.Avalonia`. Docklys probes for `libwebkit2gtk-4.0.so.37` before constructing the marketplace webview because constructing it without the library can block the UI thread. If the dependency is absent, the settings panel offers a package-manager install command and an **Open marketplace in browser** fallback.
+
+At process startup, Docklys and `RunModule` set two variables in the native Unix environment before GTK loads:
+
+- `GDK_BACKEND=x11` ensures WebKitGTK exposes an XID that Avalonia can reparent. On a Wayland desktop this means the embedded surface runs through XWayland.
+- `WEBKIT_DISABLE_DMABUF_RENDERER=1` avoids WebKitGTK DMA-BUF flicker when the view is reparented under XWayland. A user-provided value is preserved.
+
+Native WebKit children do not automatically follow Avalonia `RenderTransform` values. `X11WebViewOverlaySync` in Docklys and `X11WebViewLayoutSync` in `RunModule` periodically apply transform-aware X11 geometry, content insets, and rounded X Shape regions. `NativeWebViewAnimationSync` performs the same correction on slide-animation frames.
+
+### Other Linux desktop integration
+
+The Linux desktop entry is registered for portable/IDE launches, and a global named mutex keeps one Docklys instance alive. A second launch sends a `show-main.cmd` command through `~/.config/Docklys/commands/` and exits. These are host responsibilities; modules must not create their own instance or compositor management.
+
+---
+
+## 10. Dockly.Browser (WebAssembly)
+
+`Dockly.Browser` is the browser/WASM frontend. It targets `net10.0-browser`, references the shared `Dockly` project, and starts Avalonia with `StartBrowserAppAsync("out")`. The shared project adds the `BROWSER` compile constant for this target.
+
+The browser build is not a desktop window running inside a webview:
+
+- There is no operating-system window handle, screen collection, global keyboard/mouse hook, tray, native child window, X11 API, or WebView2/WebKitGTK instance.
+- `MainWindow` supplies browser-safe window-like shims for shared layout code.
+- `WebViewStub.cs` provides a no-op `AvaloniaWebView.WebView` shape so shared XAML and code compile. It does not navigate, execute useful scripts, or host module web content.
+- Desktop-only code is excluded with `#if !BROWSER`; Linux native code normally uses `#if LINUX && !BROWSER`.
+- Reflection-based `System.Text.Json` serialization is explicitly enabled in `Dockly.Browser.csproj` so profile, tile, and layout persistence can work in the WASM sandbox.
+
+Do not assume that a native-webview module works in `Dockly.Browser`. Provide an Avalonia fallback UI or treat the module as desktop-only. Browser persistence and file access are limited to APIs available inside the browser sandbox.
+
+---
+
+## 11. Browser and WebView Modules
+
+New web modules should implement `IWebViewModule` in addition to `IModule`. The module declares what it wants to display; Docklys owns the platform engine and integration.
+
+```csharp
+public sealed partial class MusicModule : UserControl, IModule, IWebViewModule
+{
+    public WebViewModuleDefinition WebView { get; } = new()
+    {
+        StartUrl = "https://music.example.com/",
+        AllowedHosts = new[] { "music.example.com", "accounts.example.com" },
+        AllowExternalNavigation = true,
+        UserAgentProfile = WebViewUserAgentProfile.MobileChromium,
+        LinuxEngine = WebViewLinuxEngine.WebKit,
+        InitialZoom = 1.0,
+        Features = WebViewFeatures.HideScrollbars
+            | WebViewFeatures.MiddleMouseDragGuard
+            | WebViewFeatures.MobileViewport,
+        UsePersistentCookies = true,
+        DocumentScripts = new[]
+        {
+            new WebViewDocumentScript("module-init", "window.__myModuleHost = true;")
+        }
+    };
+}
+```
+
+### Definition fields
+
+| Field | Purpose |
+|---|---|
+| `StartUrl` | Initial document requested by the module. |
+| `AllowedHosts` | Hosts that belong to the embedded experience. |
+| `AllowExternalNavigation` | Whether destinations outside `AllowedHosts` may leave the module. |
+| `UserAgentProfile` | Default, mobile Chromium, or Spotify-specific host behavior. |
+| `LinuxEngine` | `WebKit` by default, or the specialized `ChromiumOverlay` path. |
+| `InitialZoom` | Initial native engine zoom; must be greater than zero. |
+| `Features` | Host-provided scrollbar, viewport, scaling, pointer, and middle-drag behavior. |
+| `UsePersistentCookies` | Enables persistent WebKit cookies and the host's auth hardening on Linux. |
+| `UseChromiumLoginHandoff` | Allows the specialized Linux Chrome login/cookie-import flow. |
+| `DocumentScripts` | Named, module-owned scripts injected at document start. Scripts must be idempotent. |
+
+### Platform engines
+
+| Runtime | Browser implementation |
+|---|---|
+| Windows desktop | WebView2 through `WebView.Avalonia`; native child geometry and capture are host-managed. |
+| Linux desktop | WebKitGTK by default. On X11, a module that requests `ChromiumOverlay` may use a reparented Chrome surface when the host supports it; otherwise it falls back to WebKitGTK. |
+| Wayland/XWayland | WebKitGTK remains the safe fallback. The old compositor-controlled Hyprland Chrome route is disabled for normal attachment because an application must not destabilize the compositor. |
+| `Dockly.Browser` | No native browser engine; only the compile-time stub exists. |
+
+`WebViewHardeningService` applies to every module webview in Docklys. On Linux it keeps eligible navigation embedded, handles broken `target=_blank` behavior, selects the declared user agent, injects feature/document scripts, persists cookies when requested, and guards known GtkSharp/WebKit lifetime crashes. The marketplace webview is marked host-managed and uses its own policy: `docklys.com` stays embedded, external destinations open in the user's browser, and registry DLL navigation is intercepted for verified installation.
+
+`RunModule` mirrors the Linux WebKit navigation hardening and X11 layout correction so the editor preview behaves like the live dock. Keep the two copies of `Docklys.ModuleContracts/WebViewModule.cs`—one in each repository—in lockstep.
+
+The `ChromiumOverlay`, Spotify user-agent rules, login handoff, and built-in page scripts are specialized compatibility paths, not general-purpose APIs. Prefer the declarative contract and WebKit engine unless a site is proven not to work there.
+
+---
+
+## 12. Common Pitfalls
+
+- **Module doesn't show up in Dockly:** DLL is not in a resolved `Modules/` directory, its signature/developer loading policy rejects it, a runtime dependency is unavailable, its `Type.Name` conflicts, or the class isn't `UserControl` + `IModule`.
 - **Module looks broken under different skins:** You hardcoded a color or used `StaticResource`.
 - **State resets on tab switch:** You're loading from `ctor` instead of `Loaded`.
 - **Instances overwrite each other's state:** Filename doesn't include `UniqueModuleId`.
 - **`DynamicResource` returns null:** Key typo or missing from `Dockly/Skins/` files.
+- **Webview is blank or floating on Linux:** WebKitGTK is missing, GTK initialized with Wayland instead of X11, or the native child is not attached to the host layout synchronizer.
+- **Web module works on desktop but not `Dockly.Browser`:** The WASM target has no native webview. Supply a browser-safe Avalonia fallback.
+- **Login or popup leaves the embedded module:** Declare the correct `AllowedHosts`, external-navigation policy, persistent-cookie requirement, and user-agent profile through `IWebViewModule` instead of implementing platform-specific navigation hacks in the module.
