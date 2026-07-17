@@ -93,7 +93,7 @@ public partial class MainWindow
         var savePath = Path.Combine(imagesDir, name + ".webp");
 
         var slot = this.FindControl<ContentControl>("ActiveModuleSlot");
-        var control = slot?.Content as Control;
+        var control = GetModuleContent(slot);
         if (control == null) return;
 
         const int captureScale = 4;

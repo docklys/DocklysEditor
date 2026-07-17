@@ -215,44 +215,57 @@ public partial class MainWindow : Window
         var slot1 = this.FindControl<ContentControl>("ActiveModuleSlot");
         var slot2 = this.FindControl<ContentControl>("SecondModuleSlot");
 
-        ApplyZoomToSlot(slot1, percent);
+        var firstSize = ApplyZoomToSlot(slot1, percent);
+        var secondSize = default(Size);
         if (_dualView && slot2?.IsVisible == true)
-            ApplyZoomToSlot(slot2, percent);
+            secondSize = ApplyZoomToSlot(slot2, percent);
 
         // Grow the window once with the combined footprint of all visible slots.
-        double w = ValidDimension(slot1?.Width);
-        if (_dualView && slot2?.IsVisible == true && !double.IsNaN(slot2.Width))
-            w += 16 + ValidDimension(slot2.Width); // 16 px gap between the two instances
-        GrowWindowToFitSlot(w, ValidDimension(slot1?.Height));
+        var width = firstSize.Width;
+        if (_dualView && slot2?.IsVisible == true)
+            width += 16 + secondSize.Width; // 16 px gap between the two instances
+        GrowWindowToFitSlot(width, Math.Max(firstSize.Height, secondSize.Height));
     }
 
     // Apply a zoom level to a single ContentControl slot without growing the window.
-    private static void ApplyZoomToSlot(ContentControl? slot, double percent)
+    //
+    // A RenderTransform does not participate in layout. The previous implementation tried to
+    // compensate by setting the slot to desiredSize * scale, but ContentControl then arranged
+    // its child at that already-scaled size before the RenderTransform applied the scale again.
+    // That made a 200% zoom render at 400% (and 50% at 25%), which is why every non-100% value
+    // was clipped and distorted. LayoutTransformControl arranges the child at its natural size
+    // while reporting the transformed footprint to its parent, so the scale is applied exactly
+    // once and the preview remains centred and unclipped.
+    private static Size ApplyZoomToSlot(ContentControl? slot, double percent)
     {
-        var control = slot?.Content as Control;
-        if (slot == null || control == null) return;
+        if (slot?.Content is not Control control) return default;
 
         var scale = percent / 100.0;
-        // The layout slot is deliberately reduced to the scaled footprint.
-        // Scale from its top-left corner so the visual stays entirely inside
-        // that slot; a centered transform overhangs on every side and gets
-        // clipped as soon as the preview drops below 100%.
-        control.RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Relative);
-        control.RenderTransform = new ScaleTransform(scale, scale);
-
-        // RenderTransform scales the *visual* but not the layout slot — size
-        // the slot to the scaled footprint so the content isn't clipped.
-        control.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        var desired = control.DesiredSize;
-        if (desired.Width > 0 && desired.Height > 0)
+        var zoomHost = control as LayoutTransformControl;
+        if (zoomHost == null)
         {
-            slot.Width = desired.Width * scale;
-            slot.Height = desired.Height * scale;
+            // A visual can have only one parent. Detach the module from the slot before
+            // making it the layout transform's child, then attach the wrapper in its place.
+            slot.Content = null;
+            zoomHost = new LayoutTransformControl { Child = control };
+            slot.Content = zoomHost;
         }
+
+        // Remove the fixed dimensions left by older zoom passes. The layout transform now owns
+        // the scaled footprint, rather than asking ContentControl to re-arrange the child to it.
+        slot.Width = double.NaN;
+        slot.Height = double.NaN;
+        zoomHost.LayoutTransform = new ScaleTransform(scale, scale);
+        zoomHost.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        return zoomHost.DesiredSize;
     }
 
-    private static double ValidDimension(double? v) =>
-        v.HasValue && !double.IsNaN(v.Value) ? v.Value : 0;
+    // Returns the actual module rather than the layout-aware zoom wrapper. Capture code needs
+    // the module at its natural resolution, independent of the editor preview zoom.
+    private static Control? GetModuleContent(ContentControl? slot) =>
+        slot?.Content is LayoutTransformControl zoomHost
+            ? zoomHost.Child as Control
+            : slot?.Content as Control;
 
     // Window grow helper used by zoom. Same chrome math as AutoSizeWindow,
     // but never repositions and never shrinks.
