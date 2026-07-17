@@ -1,9 +1,9 @@
 {
-  "name": "VChat",
+  "name": "VolumeMixer",
   "type": "module",
   "license": "None",
   "description": "",
   "version": "1.0",
-  "sizeBytes": 71168,
+  "sizeBytes": 60928,
   "githubRepo": ""
 }

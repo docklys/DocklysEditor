@@ -302,8 +302,8 @@ public partial class MainWindow
     //
     // SupportedPlatforms is deliberately NOT a filter here. It describes where a module is useful
     // in the dock, not where a developer may work on it: honouring it in the editor silently hid
-    // any module whose platform differs from the dev's machine — VolumeMixer (Windows-only, it
-    // drives WASAPI) simply never appeared on Linux, with no way to preview or skin its layout.
+    // any module whose platform differs from the dev's machine — for example, a module that only
+    // supports one desktop audio stack — simply never appeared, with no way to preview or skin it.
     // The dock still enforces the declaration; the editor is a workbench and shows everything.
     //
     // Modules are expected to degrade rather than throw off their platform (VolumeMixer draws an

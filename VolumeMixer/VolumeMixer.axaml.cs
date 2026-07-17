@@ -5,7 +5,6 @@ using Avalonia.Media;
 using Avalonia.Interactivity;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
-using NAudio.CoreAudioApi;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -30,19 +29,12 @@ namespace VolumeMixer
 
         public string MinAppVersion => "1.0.0";
         public string MaxAppVersion => "1.0.0";
-        // Stays Windows-only, and truthfully so: the mixer drives NAudio's CoreAudioApi (WASAPI),
-        // which is Windows COM and has no Linux/macOS implementation. The dock must keep excluding
-        // it elsewhere rather than offer a module whose audio cannot work.
-        //
-        // The editor previews modules on whatever OS the developer happens to use, so this
-        // declaration must not be what decides whether the module can be *rendered*. Every audio
-        // enumeration below is guarded by AudioSessionsAvailable: off-Windows the mixer draws its
-        // normal shell with no sessions instead of throwing, which is all a layout/skin preview
-        // needs. Porting the backend to PipeWire/PulseAudio is what would make this list grow.
-        public string[] SupportedPlatforms => new[] { "Windows" };
+        // Linux controls PulseAudio sink inputs through pactl. That API is also provided by
+        // PipeWire's pipewire-pulse service, so the same implementation covers both stacks.
+        public string[] SupportedPlatforms => new[] { "Windows", "Linux" };
 
-        // NAudio's CoreAudioApi is Windows-only; touching MMDeviceEnumerator anywhere else throws.
-        private static bool AudioSessionsAvailable => OperatingSystem.IsWindows();
+        private static IAudioSessionBackend? AudioBackend => AudioSessionBackend.Current;
+        private static bool AudioSessionsAvailable => AudioBackend is not null;
 
         private string? _uniqueModuleId;
         public string UniqueModuleId { get { return _uniqueModuleId ?? string.Empty; } }
@@ -91,34 +83,22 @@ namespace VolumeMixer
                 {
                     if (kvp.Value.groupKey != groupKey) continue;
                     kvp.Value.slider.Value = newValue;
-                    try { kvp.Value.session.SimpleAudioVolume.Volume = newSystemVolume; } catch { }
+                    try { kvp.Value.session.SetVolume(newSystemVolume); } catch { }
                 }
             }
             finally { _isProgrammaticUpdate = false; }
         }
 
-        private Dictionary<string, (AudioSessionControl session, IImage icon)> _buttonSessions = new();
+        private Dictionary<string, (IAudioSession session, IImage? icon)> _buttonSessions = new();
         private Dictionary<string, bool> _buttonHasManualIcon = new();
         // groupKey is the stable identity for "same app" (process name, lower-cased).
         // Frozen at assignment time so it never drifts with tab-title changes.
-        private Dictionary<string, (AudioSessionControl session, Slider slider, string groupKey)> _sliderSessions = new();
+        private Dictionary<string, (IAudioSession session, Slider slider, string groupKey)> _sliderSessions = new();
         private System.Threading.Timer? _volumeUpdateTimer;
         private int _loadGeneration = 0;
         private bool _isProgrammaticUpdate = false;
 
-        private string GetGroupKey(AudioSessionControl session)
-        {
-            try
-            {
-                var proc = Process.GetProcessById((int)session.GetProcessID);
-                var pname = proc.ProcessName;
-                if (!string.IsNullOrWhiteSpace(pname))
-                    return pname.ToLowerInvariant();
-            }
-            catch { }
-            var dn = GetSessionDisplayName(session);
-            return string.IsNullOrWhiteSpace(dn) ? "unknown" : dn.ToLowerInvariant();
-        }
+        private static string GetGroupKey(IAudioSession session) => session.GroupKey;
 
         private void PresetButton_Click(object? sender, RoutedEventArgs e)
         {
@@ -128,32 +108,30 @@ namespace VolumeMixer
             // without one. Bail before building the popup rather than opening an empty one.
             if (!AudioSessionsAvailable) return;
 
-            const double fixedPopupSize = 100;
+            // Match the 110×110 tile exactly. The old 100px popup plus manual offsets left a
+            // visible strip of the mixer around the picker on some Linux window managers.
+            const double fixedPopupSize = 110;
             var popup = new Popup
             {
                 PlacementMode = PlacementMode.Center,
                 PlacementTarget = this,
                 IsLightDismissEnabled = true,
                 Width = fixedPopupSize,
-                Height = fixedPopupSize,
-                HorizontalOffset = 10,
-                VerticalOffset = 1
+                Height = fixedPopupSize
             };
 
             var container = new Border
             {
                 Background = GetAppBrush("ColorModuleColor", Color.FromArgb(255, 28, 28, 30)),
-                CornerRadius = new Avalonia.CornerRadius(0),
-                Padding = new Avalonia.Thickness(4),
+                CornerRadius = new Avalonia.CornerRadius(10),
+                Padding = new Avalonia.Thickness(6),
                 Width = fixedPopupSize,
                 Height = fixedPopupSize
             };
 
-            var enumerator = new MMDeviceEnumerator();
-            var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-            var sessions = device.AudioSessionManager.Sessions;
+            var sessions = AudioBackend!.GetSessions();
 
-            var validSessions = new List<(AudioSessionControl session, string name, IImage icon)>();
+            var validSessions = new List<(IAudioSession session, string name, IImage? icon)>();
             for (int i = 0; i < sessions.Count; i++)
             {
                 var session = sessions[i];
@@ -247,34 +225,32 @@ namespace VolumeMixer
                     {
                         var buttonName = clickedButton.Name ?? "";
 
-                        if (icon != null)
+                        // Linux does not have Windows shell icons, but an absent icon must never
+                        // prevent assigning the selected application to this slider.
+                        SetIconToButton(clickedButton, icon, name);
+                        _buttonHasManualIcon[buttonName] = true;
+                        _buttonSessions[buttonName] = (session, icon);
+
+                        var sliderName = buttonName.Replace("SourceIcon", "VolumeSlider");
+                        var slider = this.FindControl<Slider>(sliderName);
+
+                        if (slider != null)
                         {
-                            SetIconToButton(clickedButton, icon);
+                            // Bulletproof reassignment: physically detach handler,
+                            // swap mapping FIRST, then set value, then reattach.
+                            // No event raised during the swap can write the old
+                            // slider value back to either session.
+                            slider.ValueChanged -= OnSliderValueChanged;
+                            _sliderSessions[sliderName] = (session, slider, GetGroupKey(session));
 
-                            _buttonHasManualIcon[buttonName] = true;
-                            _buttonSessions[buttonName] = (session, icon);
+                            _isProgrammaticUpdate = true;
+                            try { slider.Value = session.Volume * 100; } catch { }
+                            _isProgrammaticUpdate = false;
 
-                            var sliderName = buttonName.Replace("SourceIcon", "VolumeSlider");
-                            var slider = this.FindControl<Slider>(sliderName);
-
-                            if (slider != null)
-                            {
-                                // Bulletproof reassignment: physically detach handler,
-                                // swap mapping FIRST, then set value, then reattach.
-                                // No event raised during the swap can write the old
-                                // slider value back to either session.
-                                slider.ValueChanged -= OnSliderValueChanged;
-                                _sliderSessions[sliderName] = (session, slider, GetGroupKey(session));
-
-                                _isProgrammaticUpdate = true;
-                                try { slider.Value = session.SimpleAudioVolume.Volume * 100; } catch { }
-                                _isProgrammaticUpdate = false;
-
-                                slider.ValueChanged += OnSliderValueChanged;
-                            }
-
-                            UpdateSliderSource(sliderName, name);
+                            slider.ValueChanged += OnSliderValueChanged;
                         }
+
+                        UpdateSliderSource(sliderName, name);
 
                         popup.Close();
                     };
@@ -357,11 +333,20 @@ namespace VolumeMixer
 
         private void OnPresetSelected(string preset) { }
 
-        private IImage? GetIconForSession(AudioSessionControl session)
+        private IImage? GetIconForSession(IAudioSession session)
+        {
+            // System.Drawing icon extraction is a Windows shell feature. Linux applications
+            // still get a functional source button with the module's standard fallback glyph.
+            if (!OperatingSystem.IsWindows()) return null;
+            return GetWindowsIconForSession(session);
+        }
+
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+        private IImage? GetWindowsIconForSession(IAudioSession session)
         {
             try
             {
-                var processId = (int)session.GetProcessID;
+                if (session.ProcessId is not int processId) return null;
                 var process = Process.GetProcessById(processId);
                 if (process.MainModule?.FileName == null) return null;
 
@@ -388,6 +373,7 @@ namespace VolumeMixer
             return null;
         }
 
+        [System.Runtime.Versioning.SupportedOSPlatform("windows")]
         private System.Drawing.Bitmap ApplyGrayscaleWithWhiteTint(System.Drawing.Bitmap original)
         {
             var processed = new System.Drawing.Bitmap(original.Width, original.Height);
@@ -422,11 +408,15 @@ namespace VolumeMixer
             return processed;
         }
 
-        private void SetIconToButton(Button button, IImage? icon)
+        private void SetIconToButton(Button button, IImage? icon, string? fallbackText = null)
         {
             if (icon == null)
             {
-                button.Content = "≡";
+                var label = string.IsNullOrWhiteSpace(fallbackText)
+                    ? "≡"
+                    : fallbackText.Trim()[0].ToString().ToUpperInvariant();
+                button.Content = label;
+                ToolTip.SetTip(button, fallbackText);
                 return;
             }
 
@@ -438,6 +428,7 @@ namespace VolumeMixer
                 Stretch = Avalonia.Media.Stretch.Uniform
             };
             button.Content = image;
+            ToolTip.SetTip(button, fallbackText);
         }
 
         private void UpdateAudioSessionIcons()
@@ -455,13 +446,10 @@ namespace VolumeMixer
                 this.FindControl<Slider>("VolumeSlider4"),
             };
 
-            // Off-Windows there are no sessions to attach; the shell above is already built, so
-            // returning here leaves an empty-but-correct mixer to preview.
+            // No supported backend is available on macOS, but the tile can still render safely.
             if (!AudioSessionsAvailable) return;
 
-            var enumerator = new MMDeviceEnumerator();
-            var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-            var sessions = device.AudioSessionManager.Sessions;
+            var sessions = AudioBackend!.GetSessions();
 
             var buttonKeysToRemove = new List<string>();
             foreach (var kv in _buttonSessions)
@@ -489,7 +477,7 @@ namespace VolumeMixer
             }
             foreach (var k in sliderKeysToRemove) _sliderSessions.Remove(k);
 
-            var filteredSessions = new List<AudioSessionControl>();
+            var filteredSessions = new List<IAudioSession>();
             for (int si = 0; si < sessions.Count; si++)
             {
                 var s = sessions[si];
@@ -518,11 +506,11 @@ namespace VolumeMixer
                         if (_buttonSessions.ContainsKey(buttonName))
                         {
                             var (manualSession, manualIcon) = _buttonSessions[buttonName];
-                            SetIconToButton(button, manualIcon);
+                            SetIconToButton(button, manualIcon, GetSessionDisplayName(manualSession));
                             slider.ValueChanged -= OnSliderValueChanged;
                             _sliderSessions[sliderName] = (manualSession, slider, GetGroupKey(manualSession));
                             _isProgrammaticUpdate = true;
-                            try { slider.Value = manualSession.SimpleAudioVolume.Volume * 100; } catch { }
+                            try { slider.Value = manualSession.Volume * 100; } catch { }
                             _isProgrammaticUpdate = false;
                             slider.ValueChanged += OnSliderValueChanged;
                         }
@@ -533,7 +521,7 @@ namespace VolumeMixer
                     {
                         var jsonSession = _sliderSessions[sliderName].session;
                         var icon = GetIconForSession(jsonSession);
-                        SetIconToButton(button, icon);
+                        SetIconToButton(button, icon, GetSessionDisplayName(jsonSession));
                         slider.ValueChanged -= OnSliderValueChanged;
                         slider.ValueChanged += OnSliderValueChanged;
                         continue;
@@ -543,12 +531,12 @@ namespace VolumeMixer
                     {
                         var session = filteredSessions[i];
                         var icon = GetIconForSession(session);
-                        SetIconToButton(button, icon);
+                        SetIconToButton(button, icon, GetSessionDisplayName(session));
 
                         slider.ValueChanged -= OnSliderValueChanged;
                         _sliderSessions[sliderName] = (session, slider, GetGroupKey(session));
                         _isProgrammaticUpdate = true;
-                        try { slider.Value = session.SimpleAudioVolume.Volume * 100; } catch { }
+                        try { slider.Value = session.Volume * 100; } catch { }
                         _isProgrammaticUpdate = false;
                         slider.ValueChanged += OnSliderValueChanged;
                     }
@@ -577,7 +565,7 @@ namespace VolumeMixer
             try
             {
                 float newSystemVolume = (float)(e.NewValue / 100.0);
-                session.SimpleAudioVolume.Volume = newSystemVolume;
+                session.SetVolume(newSystemVolume);
 
                 _isProgrammaticUpdate = true;
                 foreach (var kvp in _sliderSessions)
@@ -585,7 +573,7 @@ namespace VolumeMixer
                     if (kvp.Key == sliderName) continue;
                     if (kvp.Value.groupKey != myGroupKey) continue;
                     kvp.Value.slider.Value = e.NewValue;
-                    try { kvp.Value.session.SimpleAudioVolume.Volume = newSystemVolume; } catch { }
+                    try { kvp.Value.session.SetVolume(newSystemVolume); } catch { }
                 }
             }
             catch (Exception ex)
@@ -609,7 +597,17 @@ namespace VolumeMixer
             {
                 if (generation != _loadGeneration) return;
 
+                // pactl's JSON response is the authoritative Linux state. Sink-input objects are
+                // snapshots, so refresh them once per tick before reading the slider values.
+                Dictionary<string, IAudioSession>? currentLinuxSessions = null;
+                if (OperatingSystem.IsLinux() && AudioBackend is not null)
+                {
+                    try { currentLinuxSessions = AudioBackend.GetSessions().ToDictionary(session => session.Id); }
+                    catch (Exception ex) { Debug.WriteLine($"[DEBUG] Linux session refresh failed: {ex.Message}"); }
+                }
+
                 var staleKeys = new List<string>();
+                var refreshedSessions = new List<(string sliderName, IAudioSession session, Slider slider)>();
                 foreach (var kvp in _sliderSessions)
                 {
                     try
@@ -617,7 +615,17 @@ namespace VolumeMixer
                         var session = kvp.Value.session;
                         var slider = kvp.Value.slider;
 
-                        float systemVolume = session.SimpleAudioVolume.Volume;
+                        if (currentLinuxSessions is not null)
+                        {
+                            if (!currentLinuxSessions.TryGetValue(session.Id, out session))
+                            {
+                                staleKeys.Add(kvp.Key);
+                                continue;
+                            }
+                            refreshedSessions.Add((kvp.Key, session, slider));
+                        }
+
+                        float systemVolume = session.Volume;
                         double currentSliderValue = slider.Value;
                         double expectedSliderValue = systemVolume * 100;
                         if (Math.Abs(currentSliderValue - expectedSliderValue) > 1)
@@ -634,23 +642,12 @@ namespace VolumeMixer
                     }
                 }
                 foreach (var k in staleKeys) _sliderSessions.Remove(k);
+                foreach (var (sliderName, session, slider) in refreshedSessions)
+                    _sliderSessions[sliderName] = (session, slider, GetGroupKey(session));
             });
         }
 
-        private string GetSessionDisplayName(AudioSessionControl session)
-        {
-            string name = session.DisplayName;
-            if (string.IsNullOrWhiteSpace(name))
-            {
-                try
-                {
-                    var proc = Process.GetProcessById((int)session.GetProcessID);
-                    name = proc.ProcessName;
-                }
-                catch { name = "Unknown"; }
-            }
-            return name;
-        }
+        private static string GetSessionDisplayName(IAudioSession session) => session.DisplayName;
 
         private string GetJsonFilePath()
         {
@@ -716,15 +713,13 @@ namespace VolumeMixer
             if (_sliderSessions.ContainsKey(sliderName)) return;
             if (!AudioSessionsAvailable) return;
 
-            var enumerator = new MMDeviceEnumerator();
-            var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-            var sessions = device.AudioSessionManager.Sessions;
+            var sessions = AudioBackend!.GetSessions();
 
             var sliderPaths = LoadSliderPaths();
             if (!sliderPaths.ContainsKey(sliderName)) return;
 
             var targetSessionName = sliderPaths[sliderName];
-            AudioSessionControl? sessionFromJson = null;
+            IAudioSession? sessionFromJson = null;
             for (int i = 0; i < sessions.Count; i++)
             {
                 var session = sessions[i];
@@ -738,7 +733,7 @@ namespace VolumeMixer
 
             if (sessionFromJson != null)
             {
-                float sessionVolume = sessionFromJson.SimpleAudioVolume.Volume;
+                float sessionVolume = sessionFromJson.Volume;
                 double newSliderValue = sessionVolume * 100;
 
                 slider.ValueChanged -= OnSliderValueChanged;
@@ -750,18 +745,9 @@ namespace VolumeMixer
             }
         }
 
-        private bool IsDisallowedSession(AudioSessionControl session)
+        private bool IsDisallowedSession(IAudioSession session)
         {
             string name = session.DisplayName;
-            if (string.IsNullOrWhiteSpace(name))
-            {
-                try
-                {
-                    var proc = Process.GetProcessById((int)session.GetProcessID);
-                    name = proc?.ProcessName ?? string.Empty;
-                }
-                catch { name = string.Empty; }
-            }
 
             if (string.IsNullOrWhiteSpace(name)) return false;
             var n = name.Trim();
