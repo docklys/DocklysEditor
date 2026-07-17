@@ -4,5 +4,7 @@
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/VolumeMixer" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/Webview" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/scrcpy" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/spotify" vcs="Git" />
   </component>
 </project>

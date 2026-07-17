@@ -32,14 +32,24 @@
            running app actually loads from.
            Copies are conditional so the build still succeeds on machines without the app. -->
       <PropertyGroup>
-        <DocklyAppRoot>$(AppData)\Docklys</DocklyAppRoot>
-        <DocklyModules>$(DocklyAppRoot)\Modules</DocklyModules>
+        <!-- Windows: %AppData%\Docklys\Modules. On Unix $(AppData) is empty, so this
+             path never exists and its copy is skipped. -->
+        <DocklyModulesWin>$(AppData)\Docklys\Modules</DocklyModulesWin>
+        <!-- Linux/macOS: the app stores data under ~/.config/Docklys (matches the module's
+             own SaveSettings, which uses SpecialFolder.ApplicationData = ~/.config here).
+             Without this, Linux builds only reach OutputModuleDLL and the RUNNING dock keeps
+             loading a stale DLL — edits appear to have no effect. -->
+        <DocklyModulesUnix>$(HOME)/.config/Docklys/Modules</DocklyModulesUnix>
       </PropertyGroup>
-      <!-- ContinueOnError: if the Dockly app is currently RUNNING it holds the DLL
-           locked and these copies fail. That must NOT fail the build. -->
+      <!-- ContinueOnError: if the Dockly app is currently RUNNING it may hold the DLL
+           locked (Windows) and the copy fails. That must NOT fail the build. -->
       <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
-            DestinationFolder="$(DocklyModules)"
-            Condition="Exists('$(DocklyModules)')"
+            DestinationFolder="$(DocklyModulesWin)"
+            Condition="Exists('$(DocklyModulesWin)')"
+            ContinueOnError="true" />
+      <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
+            DestinationFolder="$(DocklyModulesUnix)"
+            Condition="Exists('$(DocklyModulesUnix)')"
             ContinueOnError="true" />
     </Target>
 </Project>

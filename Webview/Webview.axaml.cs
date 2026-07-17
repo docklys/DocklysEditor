@@ -280,22 +280,123 @@ namespace Webview
             }
         }
 
-        private void NavigateToCurrentUrl()
+        // Turns whatever the user typed into a navigable absolute http(s) URL, or null if
+        // it can't be made into one. A bare domain ("example.com") gets an https:// prefix.
+        private static string? NormalizeUrl(string? raw)
         {
-            if (_webView == null) return;
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            var s = raw.Trim();
+            if (!s.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !s.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                s = "https://" + s;
+            return Uri.TryCreate(s, UriKind.Absolute, out var uri) &&
+                   (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
+                ? uri.ToString()
+                : null;
+        }
+
+        // TEMP DIAGNOSTIC: file log so we can see the navigation path regardless of how the
+        // host process was launched (editor console is not capturable here).
+        private static void NavDbg(string msg)
+        {
             try
             {
-                var urlProp = _webView.GetType().GetProperty("Url", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
-                if (urlProp != null)
-                {
-                    urlProp.SetValue(_webView, new Uri(CurrentUrl));
-                    return;
-                }
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var path = Path.Combine(appData, "Docklys", "webview-nav-debug.log");
+                File.AppendAllText(path, $"{DateTime.Now:HH:mm:ss.fff} {msg}\n");
             }
-            catch (Exception ex)
+            catch { }
+        }
+
+        // TEMP: env-gated self-test that reproduces the "enter URL -> DONE" sequence exactly
+        // (open settings = hide webview, then close settings = show webview + navigate) so the
+        // blank-on-navigate bug can be captured deterministically without GUI automation.
+        private bool _selfTestStarted;
+        private void MaybeRunSelfTest()
+        {
+            if (_selfTestStarted) return;
+            if (Environment.GetEnvironmentVariable("WEBVIEW_SELFTEST") != "1") return;
+            _selfTestStarted = true;
+            NavDbg("SELFTEST scheduled");
+            var step = 0;
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            timer.Tick += (_, _) =>
             {
-                Console.WriteLine($"[Webview] NavigateToCurrentUrl failed: {ex.Message}");
+                step++;
+                if (step == 5)
+                {
+                    NavDbg("SELFTEST step5: open settings (hides webview)");
+                    ToggleSettings(true);
+                }
+                else if (step == 6)
+                {
+                    const string testUrl = "https://www.youtube.com/watch?v=DZoeGR_tatA";
+                    NavDbg($"SELFTEST step6: close settings + navigate to {testUrl}");
+                    if (UrlTextBox != null) UrlTextBox.Text = testUrl;
+                    ToggleSettings(false);
+                    var normalized = NormalizeUrl(UrlTextBox?.Text);
+                    if (normalized != null) { CurrentUrl = normalized; NavigateToCurrentUrl(); }
+                }
+                else if (step >= 10)
+                {
+                    NavDbg("SELFTEST done");
+                    timer.Stop();
+                }
+            };
+            timer.Start();
+        }
+
+        private void NavigateToCurrentUrl()
+        {
+            NavDbg($"NavigateToCurrentUrl enter: CurrentUrl='{CurrentUrl}' webViewNull={_webView == null}");
+            if (_webView == null) return;
+            if (!Uri.TryCreate(CurrentUrl, UriKind.Absolute, out var uri))
+            {
+                NavDbg($"  TryCreate FAILED for '{CurrentUrl}'");
+                return;
             }
+
+            // Defer to the UI thread AFTER the current layout pass. When this is called from
+            // the settings "DONE" handler the WebView was just re-shown (IsVisible false->true);
+            // on WebKitGTK the native surface is mid-re-realization, and a Url set issued right
+            // then is silently dropped — the page never loads. Posting at Background priority
+            // lets the re-show settle first so the navigation actually takes.
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_webView == null) { NavDbg("  deferred: webView became null"); return; }
+                try
+                {
+                    var t = _webView.GetType();
+                    // AvaloniaWebView navigates to `Url` only on the FIRST load; assigning Url
+                    // again after the browser is initialized changes the property but starts no
+                    // navigation (verified: no NavigationStarting fires -> blank page). Call the
+                    // Navigate() method to actually load a new page at runtime.
+                    System.Reflection.MethodInfo? navUri = null, navStr = null;
+                    foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.Instance))
+                    {
+                        if (m.Name != "Navigate") continue;
+                        var ps = m.GetParameters();
+                        if (ps.Length != 1) continue;
+                        if (ps[0].ParameterType == typeof(Uri)) navUri = m;
+                        else if (ps[0].ParameterType == typeof(string)) navStr = m;
+                    }
+                    NavDbg($"  navUri={navUri != null} navStr={navStr != null} target='{uri}' visible={_webView.IsVisible} bounds={_webView.Bounds.Width}x{_webView.Bounds.Height}");
+                    if (navUri != null) navUri.Invoke(_webView, new object[] { uri });
+                    else if (navStr != null) navStr.Invoke(_webView, new object[] { uri.ToString() });
+                    else
+                    {
+                        NavDbg("  no Navigate method; falling back to Url property");
+                        t.GetProperty("Url", BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy)
+                            ?.SetValue(_webView, uri);
+                    }
+                    NavDbg("  navigate issued");
+                }
+                catch (Exception ex)
+                {
+                    NavDbg($"  deferred EXCEPTION: {ex.GetType().Name}: {ex.Message} / inner: {ex.InnerException?.Message}");
+                    Console.WriteLine($"[Webview] NavigateToCurrentUrl failed: {ex.Message}");
+                }
+            }, DispatcherPriority.Background);
         }
 
         public Webview()
@@ -308,18 +409,21 @@ namespace Webview
             HeightPlus.Click  += (_, _) => Adjust( 0, +1);
 
             SettingsButton.Click += (_, _) => ToggleSettings(true);
-            CloseSettingsButton.Click += (_, _) => 
+            CloseSettingsButton.Click += (_, _) =>
             {
                 ToggleSettings(false);
-                var newUrl = UrlTextBox.Text?.Trim();
-                if (!string.IsNullOrEmpty(newUrl) && newUrl != CurrentUrl)
-                {
-                    if (!newUrl.StartsWith("http://") && !newUrl.StartsWith("https://"))
-                        newUrl = "https://" + newUrl;
-                    CurrentUrl = newUrl;
-                    SaveSettings();
-                    NavigateToCurrentUrl();
-                }
+                NavDbg($"DONE clicked: raw='{UrlTextBox.Text}'");
+                var normalized = NormalizeUrl(UrlTextBox.Text);
+                NavDbg($"  normalized='{normalized}'");
+                if (normalized == null) return; // empty or unparseable — keep the current page
+
+                // Reflect the cleaned URL back so the box shows what we actually navigate to.
+                UrlTextBox.Text = normalized;
+                CurrentUrl = normalized;
+                SaveSettings();
+                // Re-issue the navigation on every DONE (not only when the text differs from
+                // the old value) so a load that was dropped earlier gets another attempt.
+                NavigateToCurrentUrl();
             };
 
             // Ctrl+scroll: drive the in-page scale-to-fit zoom. The in-page wheel listener
@@ -555,6 +659,7 @@ namespace Webview
                     SubscribeToAncestorTransforms();
                     StartContinuousSync();
                     ScheduleInitialSettings();
+                    MaybeRunSelfTest();
 
                     try { urlProp?.SetValue(webView, new Uri(CurrentUrl)); }
                     catch (Exception ex) { ShowError($"Failed to navigate to {CurrentUrl}:\n{ex.InnerException?.Message ?? ex.Message}"); }

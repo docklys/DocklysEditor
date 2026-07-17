@@ -2,8 +2,8 @@
   "name": "scrcpy",
   "type": "module",
   "license": "MIT",
-  "description": "",
+  "description": "A Docklys module: scrcpy",
   "version": "1.0",
   "sizeBytes": 793088,
-  "githubRepo": ""
+  "githubRepo": "dcqwqc/Docklys.scrcpy"
 }

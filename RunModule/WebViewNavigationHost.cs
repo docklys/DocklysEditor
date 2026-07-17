@@ -72,6 +72,7 @@ internal static class WebViewNavigationHost
 
         webView.NavigationStarting += (_, e) =>
         {
+            NavDbg($"[HOST] NavigationStarting url='{e.Url}'");
             PinGtkWrapper(e.RawArgs);
             // GtkSharp caches wrappers by native handle, so reading Request here returns the
             // same instance the backend already made; retaining it keeps its finalizer from
@@ -90,15 +91,21 @@ internal static class WebViewNavigationHost
             HardenPlatformWebView(webView);
         };
 
-        webView.NavigationCompleted += (_, e) => PinGtkWrapper(e.RawArgs);
+        webView.NavigationCompleted += (_, e) =>
+        {
+            NavDbg($"[HOST] NavigationCompleted {DumpArgs(e)}");
+            PinGtkWrapper(e.RawArgs);
+        };
 
         webView.WebViewNewWindowRequested += (_, e) =>
         {
+            NavDbg($"[HOST] NewWindowRequested url='{e.Url}' strategy={e.UrlLoadingStrategy}");
             PinGtkWrapper(e.RawArgs);
 
             if (e.UrlLoadingStrategy == WebViewCore.Enums.UrlRequestStrategy.OpenExternally)
             {
                 e.UrlLoadingStrategy = WebViewCore.Enums.UrlRequestStrategy.OpenInWebView;
+                NavDbg("[HOST]   -> flipped OpenExternally to OpenInWebView");
                 return;
             }
 
@@ -110,10 +117,40 @@ internal static class WebViewNavigationHost
                 && IsNavigableWebUri(e.Url))
             {
                 var popupUrl = e.Url!;
+                NavDbg($"[HOST]   -> OpenInWebView popup: CancelLoad + re-post webView.Url='{popupUrl}' (current='{webView.Url}')");
                 e.UrlLoadingStrategy = WebViewCore.Enums.UrlRequestStrategy.CancelLoad;
                 Dispatcher.UIThread.Post(() => webView.Url = popupUrl);
             }
         };
+    }
+
+    private static void NavDbg(string msg)
+    {
+        try
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(appData, "Docklys", "webview-nav-debug.log"),
+                $"{DateTime.Now:HH:mm:ss.fff} {msg}\n");
+        }
+        catch { }
+    }
+
+    private static string DumpArgs(object e)
+    {
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var p in e.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            {
+                if (p.Name == "RawArgs") continue;
+                object? v = null;
+                try { v = p.GetValue(e); } catch { }
+                sb.Append(p.Name).Append('=').Append(v).Append(' ');
+            }
+            return sb.ToString().TrimEnd();
+        }
+        catch { return "?"; }
     }
 
     private static void PinGtkWrapper(object? wrapper)
