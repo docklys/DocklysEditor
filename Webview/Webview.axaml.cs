@@ -295,59 +295,6 @@ namespace Webview
                 : null;
         }
 
-        // TEMP DIAGNOSTIC: file log so we can see the navigation path regardless of how the
-        // host process was launched (editor console is not capturable here).
-        private static void NavDbg(string msg)
-        {
-            try
-            {
-                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                var path = Path.Combine(appData, "Docklys", "webview-nav-debug.log");
-                File.AppendAllText(path, $"{DateTime.Now:HH:mm:ss.fff} {msg}\n");
-            }
-            catch { }
-        }
-
-        // TEMP: env-gated self-test that reproduces the "enter URL -> DONE" sequence exactly
-        // (open settings = hide webview, then close settings = show webview + navigate) so the
-        // blank-on-navigate bug can be captured deterministically without GUI automation.
-        private bool _selfTestStarted;
-        private void MaybeRunSelfTest()
-        {
-            if (_selfTestStarted) return;
-            if (Environment.GetEnvironmentVariable("WEBVIEW_SELFTEST") != "1") return;
-            _selfTestStarted = true;
-            NavDbg("SELFTEST scheduled");
-            var step = 0;
-            var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-            timer.Tick += (_, _) =>
-            {
-                step++;
-                if (step == 5)
-                {
-                    var toggle = Environment.GetEnvironmentVariable("WEBVIEW_SELFTEST_TOGGLE") == "1";
-                    NavDbg($"SELFTEST step5: toggleSettings={toggle}");
-                    if (toggle) ToggleSettings(true);
-                }
-                else if (step == 6)
-                {
-                    var toggle = Environment.GetEnvironmentVariable("WEBVIEW_SELFTEST_TOGGLE") == "1";
-                    const string testUrl = "https://www.youtube.com/watch?v=DZoeGR_tatA";
-                    NavDbg($"SELFTEST step6: navigate to {testUrl} (toggle={toggle})");
-                    if (UrlTextBox != null) UrlTextBox.Text = testUrl;
-                    if (toggle) ToggleSettings(false);
-                    var normalized = NormalizeUrl(UrlTextBox?.Text);
-                    if (normalized != null) { CurrentUrl = normalized; NavigateToCurrentUrl(); }
-                }
-                else if (step >= 10)
-                {
-                    NavDbg("SELFTEST done");
-                    timer.Stop();
-                }
-            };
-            timer.Start();
-        }
-
         // Loads CurrentUrl into the webview. AvaloniaWebView/WebKitGTK only honor a navigation
         // on a webview's FIRST load: assigning `Url` again — or calling the control/platform
         // `Navigate(Uri)` — after init never reaches WebKit (verified: no NavigationStarting
@@ -361,7 +308,6 @@ namespace Webview
             {
                 try
                 {
-                    NavDbg($"Recreate webview for CurrentUrl='{CurrentUrl}'");
                     var old = _webView;
                     _webViewBoundsSub?.Dispose();
                     _webViewBoundsSub = null;
@@ -379,7 +325,6 @@ namespace Webview
                 }
                 catch (Exception ex)
                 {
-                    NavDbg($"Recreate failed: {ex.Message}");
                     Console.WriteLine($"[Webview] NavigateToCurrentUrl (recreate) failed: {ex.Message}");
                 }
             }, DispatcherPriority.Background);
@@ -398,9 +343,7 @@ namespace Webview
             CloseSettingsButton.Click += (_, _) =>
             {
                 ToggleSettings(false);
-                NavDbg($"DONE clicked: raw='{UrlTextBox.Text}'");
                 var normalized = NormalizeUrl(UrlTextBox.Text);
-                NavDbg($"  normalized='{normalized}'");
                 if (normalized == null) return; // empty or unparseable — keep the current page
 
                 // Reflect the cleaned URL back so the box shows what we actually navigate to.
@@ -645,7 +588,6 @@ namespace Webview
                     SubscribeToAncestorTransforms();
                     StartContinuousSync();
                     ScheduleInitialSettings();
-                    MaybeRunSelfTest();
 
                     try { urlProp?.SetValue(webView, new Uri(CurrentUrl)); }
                     catch (Exception ex) { ShowError($"Failed to navigate to {CurrentUrl}:\n{ex.InnerException?.Message ?? ex.Message}"); }

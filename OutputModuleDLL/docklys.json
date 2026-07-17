@@ -1,9 +1,9 @@
 {
-  "name": "Webview",
+  "name": "scrcpy",
   "type": "module",
-  "license": "None",
-  "description": "A Docklys module: Webview",
+  "license": "MIT",
+  "description": "A Docklys module: scrcpy",
   "version": "1.0",
-  "sizeBytes": 82944,
-  "githubRepo": "dcqwqc/Docklys.Webview"
+  "sizeBytes": 793088,
+  "githubRepo": "dcqwqc/Docklys.scrcpy"
 }

@@ -91,24 +91,49 @@ internal static class X11WebViewLayoutSync
             // Match Dockly's content gutter: it keeps WebKit from hiding the module's border
             // or the bottom settings affordance when the editor scales a preview.
             var inset = Math.Max(1, (int)Math.Round(6 * scale * scaling));
-            var x = (int)Math.Round(visual.X * scaling) + inset;
-            var y = (int)Math.Round(visual.Y * scaling) + inset;
-            var width = Math.Max(1, (int)Math.Round(visual.Width * scaling) - inset * 2);
-            var height = Math.Max(1, (int)Math.Round(visual.Height * scaling) - inset * 2);
+            // Full (unclipped) module rect in physical pixels.
+            var moduleX = (int)Math.Round(visual.X * scaling) + inset;
+            var moduleY = (int)Math.Round(visual.Y * scaling) + inset;
+            var moduleW = Math.Max(1, (int)Math.Round(visual.Width * scaling) - inset * 2);
+            var moduleH = Math.Max(1, (int)Math.Round(visual.Height * scaling) - inset * 2);
 
-            XMoveResizeWindow(_display, holder, x, y, (uint)width, (uint)height);
-            XMoveResizeWindow(_display, native, 0, 0, (uint)width, (uint)height);
+            // Clip the native child to the same bounds Avalonia clips the module to. A WebKit X11
+            // child ignores ancestor ClipToBounds, so without this it spills past the LIVE PREVIEW
+            // border and paints over the rest of the editor — most visibly when the zoom slider
+            // enlarges the tile past the preview viewport, or when the preview panel is small.
+            var clip = ComputeClipRect(control, host, scaling);
+            var ix = Math.Max(moduleX, clip.X);
+            var iy = Math.Max(moduleY, clip.Y);
+            var iRight = Math.Min(moduleX + moduleW, clip.X + clip.W);
+            var iBottom = Math.Min(moduleY + moduleH, clip.Y + clip.H);
+            var vw = iRight - ix;
+            var vh = iBottom - iy;
+            if (vw <= 0 || vh <= 0)
+            {
+                // Entirely outside the visible preview — park it off-screen so it covers nothing.
+                XMoveResizeWindow(_display, holder, -32000, -32000, 1, 1);
+                continue;
+            }
+
+            // Holder = the visible (clipped) region; the native child keeps the full module size,
+            // shifted so only the in-bounds slice shows (the holder window clips its own child).
+            var offX = moduleX - ix;
+            var offY = moduleY - iy;
+            XMoveResizeWindow(_display, holder, ix, iy, (uint)vw, (uint)vh);
+            XMoveResizeWindow(_display, native, offX, offY, (uint)moduleW, (uint)moduleH);
 
             // A native child is a square X window and knows nothing about the module's corner
             // radius, so WebKit paints square corners over it. Dockly rounds the holder via the
             // X Shape extension; do the same here or previews misrepresent the shipped module.
+            // The shape is built for the full module and offset into the (possibly clipped)
+            // holder, so only the module's real corners round and clipped edges stay straight.
             // Re-shaping costs a server round-trip, so only do it when the geometry changed.
             var radius = Math.Max(1, (int)Math.Round(WebViewCornerRadiusLogical * scale * scaling));
-            var shape = ShapeCache.TryGetValue(holder, out var last) ? last : (-1, -1, -1);
-            if (shape != (width, height, radius))
+            var shapeKey = (vw, vh, radius, offX, offY, moduleW, moduleH);
+            if (!ShapeCache.TryGetValue(holder, out var last) || last != shapeKey)
             {
-                ApplyRoundedBoundingShape(holder, width, height, radius);
-                ShapeCache[holder] = (width, height, radius);
+                ApplyRoundedBoundingShape(holder, moduleW, moduleH, radius, offX, offY);
+                ShapeCache[holder] = shapeKey;
             }
         }
         XFlush(_display);
@@ -119,11 +144,46 @@ internal static class X11WebViewLayoutSync
     private const double WebViewCornerRadiusLogical = 6.0;
 
     // Last shape written per holder window, so a static preview costs nothing per frame.
-    private static readonly Dictionary<nint, (int W, int H, int R)> ShapeCache = new();
+    private static readonly Dictionary<nint, (int W, int H, int R, int OffX, int OffY, int MW, int MH)> ShapeCache = new();
+
+    // Intersects the bounds of every ClipToBounds ancestor (the LIVE PREVIEW border and any
+    // other clipping container) between the webview and the window, in physical pixels. This is
+    // the region Avalonia would clip the module to; the native X11 child must be clipped the
+    // same way or it renders over the rest of the editor.
+    private static (int X, int Y, int W, int H) ComputeClipRect(Control webView, Window host, double scaling)
+    {
+        double left = 0, top = 0, right = host.Bounds.Width, bottom = host.Bounds.Height;
+
+        Visual? v = webView.GetVisualParent();
+        while (v != null && !ReferenceEquals(v, host))
+        {
+            if (v.ClipToBounds)
+            {
+                var m = v.TransformToVisual(host);
+                if (m.HasValue)
+                {
+                    var composed = m.Value;
+                    if (host.RenderTransform != null) composed *= host.RenderTransform.Value;
+                    var r = new Rect(default, v.Bounds.Size).TransformToAABB(composed);
+                    if (r.X > left) left = r.X;
+                    if (r.Y > top) top = r.Y;
+                    if (r.X + r.Width < right) right = r.X + r.Width;
+                    if (r.Y + r.Height < bottom) bottom = r.Y + r.Height;
+                }
+            }
+            v = v.GetVisualParent();
+        }
+
+        var x = (int)Math.Round(left * scaling);
+        var y = (int)Math.Round(top * scaling);
+        return (x, y, Math.Max(0, (int)Math.Round(right * scaling) - x), Math.Max(0, (int)Math.Round(bottom * scaling) - y));
+    }
 
     // Approximates a rounded rectangle with one-pixel rows down each corner arc plus a single
-    // rectangle for the straight middle — the same construction Dockly uses.
-    private static void ApplyRoundedBoundingShape(nint window, int w, int h, int r)
+    // rectangle for the straight middle — the same construction Dockly uses. Built at the full
+    // module size and shifted by (offX, offY) into the holder so a clipped tile keeps rounded
+    // corners only where its real corners fall inside the visible region.
+    private static void ApplyRoundedBoundingShape(nint window, int w, int h, int r, int offX, int offY)
     {
         r = Math.Min(r, Math.Min(w, h) / 2);
         if (r < 1) return;
@@ -132,10 +192,10 @@ internal static class X11WebViewLayoutSync
         for (var row = 0; row < r; row++)
         {
             var inset = r - (int)Math.Round(Math.Sqrt((double)r * r - (r - row - 0.5) * (r - row - 0.5)));
-            rects.Add(new XRectangle { X = (short)inset, Y = (short)row, Width = (ushort)Math.Max(1, w - 2 * inset), Height = 1 });
-            rects.Add(new XRectangle { X = (short)inset, Y = (short)(h - 1 - row), Width = (ushort)Math.Max(1, w - 2 * inset), Height = 1 });
+            rects.Add(new XRectangle { X = (short)(offX + inset), Y = (short)(offY + row), Width = (ushort)Math.Max(1, w - 2 * inset), Height = 1 });
+            rects.Add(new XRectangle { X = (short)(offX + inset), Y = (short)(offY + h - 1 - row), Width = (ushort)Math.Max(1, w - 2 * inset), Height = 1 });
         }
-        rects.Add(new XRectangle { X = 0, Y = (short)r, Width = (ushort)w, Height = (ushort)Math.Max(1, h - 2 * r) });
+        rects.Add(new XRectangle { X = (short)offX, Y = (short)(offY + r), Width = (ushort)w, Height = (ushort)Math.Max(1, h - 2 * r) });
 
         XShapeCombineRectangles(_display, window, ShapeBounding, 0, 0, rects.ToArray(), rects.Count, ShapeSet, 0);
     }
