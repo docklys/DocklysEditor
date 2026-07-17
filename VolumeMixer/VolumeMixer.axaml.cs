@@ -336,7 +336,8 @@ namespace VolumeMixer
         private IImage? GetIconForSession(IAudioSession session)
         {
             // System.Drawing icon extraction is a Windows shell feature. Linux applications
-            // still get a functional source button with the module's standard fallback glyph.
+            // use freedesktop.org icon themes instead, then fall back to an app initial.
+            if (OperatingSystem.IsLinux()) return LinuxIconResolver.Load(session);
             if (!OperatingSystem.IsWindows()) return null;
             return GetWindowsIconForSession(session);
         }
@@ -355,7 +356,7 @@ namespace VolumeMixer
 
                 using (var originalBitmap = icon.ToBitmap())
                 {
-                    var processedBitmap = ApplyGrayscaleWithWhiteTint(originalBitmap);
+                    var processedBitmap = ApplyMonochrome(originalBitmap);
                     using (var stream = new MemoryStream())
                     {
                         processedBitmap.Save(stream, ImageFormat.Png);
@@ -373,12 +374,41 @@ namespace VolumeMixer
             return null;
         }
 
+        // Turns any app icon into a punchy full-range black/white glyph on a transparent
+        // background, matching the Linux ImageMagick filter in LinuxIconResolver so both
+        // platforms render identically. The original alpha (and therefore the icon's shape
+        // and soft edges) is preserved untouched; only the colour is replaced. The tone map
+        // is: auto-level (stretch the icon's own grey range to full 0..255) then a strong
+        // sigmoidal S-curve that snaps tones toward crisp black and white while keeping
+        // internal detail, with a bright-biased midpoint so it reads white-leaning on the
+        // medium-grey tile without washing out to a flat grey blob.
+        private const double SigmoidContrast = 7.0;
+        private const double SigmoidMidpoint = 0.40;
+
         [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-        private System.Drawing.Bitmap ApplyGrayscaleWithWhiteTint(System.Drawing.Bitmap original)
+        private System.Drawing.Bitmap ApplyMonochrome(System.Drawing.Bitmap original)
         {
             var processed = new System.Drawing.Bitmap(original.Width, original.Height);
-            float contrastMultiplier = 3.0f;
-            int contrastThreshold = 128;
+
+            // First pass: find the icon's own min/max luminance (over visible pixels) so we
+            // can stretch it across the full range, exactly like ImageMagick's -auto-level.
+            int min = 255, max = 0;
+            for (int x = 0; x < original.Width; x++)
+            {
+                for (int y = 0; y < original.Height; y++)
+                {
+                    var pixel = original.GetPixel(x, y);
+                    if (pixel.A == 0) continue;
+                    int gray = (int)(0.299 * pixel.R + 0.587 * pixel.G + 0.114 * pixel.B);
+                    if (gray < min) min = gray;
+                    if (gray > max) max = gray;
+                }
+            }
+            double range = max > min ? max - min : 0;
+
+            // Precompute the sigmoidal normalization endpoints once.
+            double f0 = Sigmoid(0.0), f1 = Sigmoid(1.0);
+            double fSpan = f1 - f0;
 
             for (int x = 0; x < original.Width; x++)
             {
@@ -392,21 +422,20 @@ namespace VolumeMixer
                     }
 
                     int gray = (int)(0.299 * pixel.R + 0.587 * pixel.G + 0.114 * pixel.B);
-                    int contrastedGray = contrastThreshold + (int)((gray - contrastThreshold) * contrastMultiplier);
-                    contrastedGray = Math.Max(0, Math.Min(255, contrastedGray));
-
-                    int finalValue;
-                    if (contrastedGray > contrastThreshold)
-                        finalValue = 180 + (int)((contrastedGray - contrastThreshold) * 0.6f);
-                    else
-                        finalValue = (int)(contrastedGray * 0.4f);
-
-                    finalValue = Math.Max(0, Math.Min(255, finalValue));
-                    processed.SetPixel(x, y, System.Drawing.Color.FromArgb(pixel.A, finalValue, finalValue, finalValue));
+                    // auto-level: stretch to 0..1. Flat icons (no range) bias bright.
+                    double leveled = range > 0 ? (gray - min) / range : 1.0;
+                    // strong S-curve toward black/white, bright-biased midpoint.
+                    double curved = fSpan > 0 ? (Sigmoid(leveled) - f0) / fSpan : leveled;
+                    int tone = Math.Clamp((int)Math.Round(curved * 255.0), 0, 255);
+                    processed.SetPixel(x, y, System.Drawing.Color.FromArgb(pixel.A, tone, tone, tone));
                 }
             }
             return processed;
         }
+
+        // ImageMagick-compatible increasing sigmoidal contrast transfer for x in [0,1].
+        private static double Sigmoid(double x) =>
+            1.0 / (1.0 + Math.Exp(SigmoidContrast * (SigmoidMidpoint - x)));
 
         private void SetIconToButton(Button button, IImage? icon, string? fallbackText = null)
         {

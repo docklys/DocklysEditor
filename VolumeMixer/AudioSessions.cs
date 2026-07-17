@@ -15,6 +15,7 @@ internal interface IAudioSession
     string Id { get; }
     string DisplayName { get; }
     string GroupKey { get; }
+    string? IconName { get; }
     int? ProcessId { get; }
     float Volume { get; }
     void SetVolume(float volume);
@@ -55,6 +56,7 @@ internal sealed class WindowsAudioSession : IAudioSession
     public WindowsAudioSession(AudioSessionControl session) => _session = session;
     public string Id => _session.GetSessionIdentifier;
     public int? ProcessId => _session.GetProcessID == 0 ? null : (int)_session.GetProcessID;
+    public string? IconName => null;
     public string DisplayName
     {
         get
@@ -103,12 +105,13 @@ internal sealed class PactlAudioSessionBackend : IAudioSessionBackend
                     properties?.Value<string>("application.process.binary"),
                     properties?.Value<string>("application.name"),
                     name);
+                var iconName = properties?.Value<string>("application.icon_name");
                 var pidText = properties?.Value<string>("application.process.id");
                 var processId = int.TryParse(pidText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var pid)
                     ? pid
                     : (int?)null;
                 var volume = ReadVolume(input["volume"] as JObject);
-                result.Add(new PactlAudioSession(id.Value.ToString(CultureInfo.InvariantCulture), name, binary, processId, volume));
+                result.Add(new PactlAudioSession(id.Value.ToString(CultureInfo.InvariantCulture), name, binary, iconName, processId, volume));
             }
             return result;
         }
@@ -169,11 +172,12 @@ internal sealed class PactlAudioSessionBackend : IAudioSessionBackend
 internal sealed class PactlAudioSession : IAudioSession
 {
     private readonly float _volume;
-    public PactlAudioSession(string id, string displayName, string groupKey, int? processId, float volume)
+    public PactlAudioSession(string id, string displayName, string groupKey, string? iconName, int? processId, float volume)
     {
         Id = id;
         DisplayName = displayName;
         GroupKey = groupKey.ToLowerInvariant();
+        IconName = iconName;
         ProcessId = processId;
         _volume = volume;
     }
@@ -181,6 +185,7 @@ internal sealed class PactlAudioSession : IAudioSession
     public string Id { get; }
     public string DisplayName { get; }
     public string GroupKey { get; }
+    public string? IconName { get; }
     public int? ProcessId { get; }
     public float Volume => _volume;
     public void SetVolume(float volume) => PactlAudioSessionBackend.SetVolume(Id, volume);

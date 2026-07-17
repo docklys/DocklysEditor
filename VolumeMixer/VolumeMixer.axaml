@@ -155,6 +155,9 @@
     <UserControl.Styles>
         
         <!-- Button Square Base Style -->
+        <!-- No box: the icon is a transparent-background monochrome glyph, so the button
+             itself is fully transparent with no border. Hover/press give a subtle overlay
+             for feedback only. -->
         <Style Selector="Button.square">
             <Setter Property="Width" Value="16"/>
             <Setter Property="Height" Value="16"/>
@@ -163,21 +166,24 @@
             <Setter Property="MaxWidth" Value="16"/>
             <Setter Property="MaxHeight" Value="16"/>
             <Setter Property="Padding" Value="0"/>
-            <Setter Property="Background" Value="#2A2A2A"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="BorderBrush" Value="#555555"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#EDEDED"/>
             <Setter Property="HorizontalAlignment" Value="Center"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
 
         <!-- Button Square Hover State -->
         <Style Selector="Button.square:pointerover /template/ ContentPresenter">
-            <Setter Property="Background" Value="#424242"/>
+            <Setter Property="Background" Value="#22FFFFFF"/>
+            <Setter Property="CornerRadius" Value="3"/>
         </Style>
 
         <!-- Button Square Pressed State -->
         <Style Selector="Button.square:pressed /template/ ContentPresenter">
-            <Setter Property="Background" Value="#1A1A1A"/>
+            <Setter Property="Background" Value="#33000000"/>
+            <Setter Property="CornerRadius" Value="3"/>
         </Style>
 
         <!-- General Button Style -->
