@@ -20,6 +20,7 @@ For a terse, machine-grade reference, see [`AIArchitecture.md`](./AIArchitecture
 10. [Dockly.Browser (WebAssembly)](#10-docklybrowser-webassembly)
 11. [Browser and WebView Modules](#11-browser-and-webview-modules)
 12. [Common Pitfalls](#12-common-pitfalls)
+13. [AI and cross-platform development](#13-ai-and-cross-platform-development)
 
 ---
 
@@ -60,6 +61,31 @@ dotnet new docklysmodule -n Clock -o ./DocklysEditor/Clock
 
 ### Option C — Manual Copy
 Copy the `DefaultModule` folder manually, rename everything from `DefaultModule` to your module name, add it to `DefaultModule.sln`, and add a `<ProjectReference>` in `RunModule.csproj`.
+
+### Module manifest and permissions
+
+Every module folder must include `docklys.manifest.json`. This is the security declaration for the compiled module; keep its `module_id` aligned with the module folder/assembly and keep its version aligned with the module version you ship.
+
+```json
+{
+  "schema_version": 1,
+  "module_id": "Clock",
+  "version": "1.0.0",
+  "security_tier": 1,
+  "requested_capabilities": [
+    "ui.render",
+    "storage.module.read",
+    "storage.module.write"
+  ]
+}
+```
+
+- `ui.render` is required by every visible module.
+- `storage.module.read` and `storage.module.write` permit only the module's own settings data. Request both and use `security_tier` 1 when the module persists state.
+- Do not request storage or any future capability “just in case.” Start with the least privilege the module needs and add a capability only when the implementation requires it.
+- Use **Project → Permissions** in `RunModule` to edit the manifest version, standard storage permissions, and additional capability names. The editor calculates `security_tier` from the selected capabilities; developers do not set it manually. The New Module dialog preselects storage access so a settings-capable template is safe by default; remove it for a truly stateless module.
+
+The editor copies the active module's manifest into `OutputModuleDLL` with its package metadata. A deployment format that stores modules separately must keep each manifest with its corresponding module, never substitute another module's manifest.
 
 ---
 
@@ -334,3 +360,46 @@ The `ChromiumOverlay`, Spotify user-agent rules, login handoff, and built-in pag
 - **Webview is blank or floating on Linux:** WebKitGTK is missing, GTK initialized with Wayland instead of X11, or the native child is not attached to the host layout synchronizer.
 - **Web module works on desktop but not `Dockly.Browser`:** The WASM target has no native webview. Supply a browser-safe Avalonia fallback.
 - **Login or popup leaves the embedded module:** Declare the correct `AllowedHosts`, external-navigation policy, persistent-cookie requirement, and user-agent profile through `IWebViewModule` instead of implementing platform-specific navigation hacks in the module.
+
+---
+
+## 13. AI and Cross-Platform Development
+
+Before an AI coding assistant changes this repository, it **must** read this document and [AIArchitecture.md](AIArchitecture.md). The supported repository instruction entry points are `AGENTS.md` (Codex, Kimi, and Cursor), `CLAUDE.md` (Claude Code), `GEMINI.md` (Gemini CLI), `QWEN.md` (Qwen Code), and `.github/copilot-instructions.md` (GitHub Copilot CLI). Several tools also read `AGENTS.md`, which makes it the shared baseline.
+
+### Verified instruction-file names
+
+Use the files below—not invented model-name files—because these are the instruction locations the corresponding tools discover automatically:
+
+| Tool | Repository instruction file(s) used here |
+|---|---|
+| Codex | `AGENTS.md` |
+| Claude Code | `CLAUDE.md` |
+| Gemini CLI | `GEMINI.md` |
+| Kimi Code | `AGENTS.md` |
+| Qwen Code | `QWEN.md` and `AGENTS.md` |
+| GitHub Copilot CLI | `.github/copilot-instructions.md`, plus `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` |
+| Cursor | `AGENTS.md`; `.cursor/rules/*.mdc` is available for scoped rules |
+| Cline | `AGENTS.md`; `.clinerules/*.md` is available for additional rules |
+| Windsurf Cascade | `AGENTS.md`; `.windsurf/rules/*.md` is available for additional rules |
+| Continue | `.continue/rules/docklys-ai.md` |
+
+`AI_INSTRUCTIONS.md` is the shared policy source. `CLAUDE.md`, `GEMINI.md`, `QWEN.md`, and Copilot's instruction file import it using each tool's documented `@path` form; `AGENTS.md` explicitly directs agents to it. Do not add files such as `CODEX.md`, `KIMI.md`, `llm.md`, or `agent.md`: those names are not the automatic repository instruction entry points for these tools.
+
+### Security and engineering references
+
+- [SECURITY.md](SECURITY.md) is authoritative for manifest invariants, capability minimization, automatic tier calculation, untrusted input, secret handling, and security release checks.
+- [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) is authoritative for library selection, dependency review, cross-platform design, lifecycle safety, and the verification ladder.
+- These documents complement this guide. When a change affects permissions, data storage, dependencies, process execution, network behavior, native interop, or platform support, read both before implementation.
+
+### Cross-platform-first development
+
+Treat Windows, macOS, and Linux as the default support target for every new module and editor feature. Do this at the beginning of the work, not as a cleanup step:
+
+1. Design the UI and state flow with Avalonia and .NET APIs that work on all three platforms. Use `Environment.SpecialFolder.ApplicationData` for module data, never hard-coded Windows paths.
+2. Isolate native code in small platform-specific services. Guard calls with `OperatingSystem.IsWindows()`, `OperatingSystem.IsMacOS()`, or `OperatingSystem.IsLinux()`; use `#if WINDOWS`, `#if MACOS`, or `#if LINUX` only when compilation itself needs separation.
+3. Provide an in-module fallback or clear disabled state when an OS-specific service, executable, or native library is missing. A module must not throw from its constructor merely because a platform feature is unavailable.
+4. When adding a dependency, confirm that it supports Windows, macOS, and Linux. If it does not, keep it behind the platform service and preserve the fallback on the other systems.
+5. Build the changed project on Windows, macOS, and Linux before release. At minimum run `dotnet build <path-to-project.csproj>` in each environment and manually verify module creation, rendering, theme resources, persistence, and the unavailable-feature fallback.
+
+Do not claim cross-platform support based solely on a Linux or Windows build. Record any deliberate platform limitation in the module README and `SupportedPlatforms`, while retaining safe construction and UI behavior on the other desktop systems.

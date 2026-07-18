@@ -8,6 +8,12 @@ Two repos in this tree:
 
 A *module* is an Avalonia `UserControl` that implements `Docklys.ModuleContracts.IModule`. Distributed as a `<Name>.dll` placed in Dockly's `Modules/` directory.
 
+## Mandatory AI Workflow
+
+Before editing this repository, an AI assistant MUST read `AI_INSTRUCTIONS.md`, `Documentation.md`, `SECURITY.md`, `ENGINEERING_STANDARDS.md`, and this file. The root instruction files for Codex, Claude, Gemini, Kimi, Qwen, and other assistants point to that shared policy set.
+
+For every new module or editor feature, treat Windows, macOS, and Linux as first-class targets from the initial design. Prefer Avalonia/.NET APIs; isolate native calls behind platform services; guard them with `OperatingSystem.IsWindows()`, `OperatingSystem.IsMacOS()`, or `OperatingSystem.IsLinux()`; and provide a non-throwing fallback. Build the changed project on all three operating systems before release. Do not use hard-coded OS paths or let a missing native integration prevent a module from being constructed.
+
 ---
 
 ## 1. Module Contract (MCCP)
@@ -74,6 +80,27 @@ Handled primarily by `RunModule.ModuleLoadContext`.
 - **Loading**: DLLs are read into a `MemoryStream` and loaded via `LoadFromStream` to avoid file locking on disk.
 - **Unloading**: Old `ModuleLoadContext` calls `Unload()`. References dropped, GC collects.
 - **Re-instantiation**: New context created, `Activator.CreateInstance` called, host re-assigns `UniqueModuleId` and re-attaches to visual tree.
+
+### Module manifests and capabilities
+
+Every module source folder carries `docklys.manifest.json`:
+
+```json
+{
+  "schema_version": 1,
+  "module_id": "ModuleName",
+  "version": "1.0.0",
+  "security_tier": 0,
+  "requested_capabilities": ["ui.render"]
+}
+```
+
+- `module_id` follows the module folder/assembly identity; version follows the module version being released.
+- `ui.render` is the baseline capability.
+- Module settings persistence requires `storage.module.read` and `storage.module.write`, and therefore `security_tier` 1.
+- Request the minimum capability set. Do not add permissions for planned work, broad filesystem access, or convenience.
+- `RunModule` exposes the active manifest through **Project → Permissions**. The creation dialog starts with module-scoped storage permissions selected; the editor derives the tier from the selected capabilities and writes both to the cloned module's manifest. Developers do not set the tier manually.
+- `SECURITY.md` defines the manifest invariants and trust-boundary checks. `ENGINEERING_STANDARDS.md` defines preferred libraries and the portability/verification standard; these are part of the module architecture, not optional contributor notes.
 
 ---
 

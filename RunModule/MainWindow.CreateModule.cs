@@ -82,7 +82,6 @@ public partial class MainWindow
             manifest.ModuleId = name;
             manifest.RequestedCapabilities = spec.RequestedCapabilities?.ToList()
                 ?? TemplateCapabilities.ToList();
-            manifest.SecurityTier = spec.SecurityTier;
             WriteManifest(targetDir, manifest);
             GenerateLicenseFile(targetDir, spec.License);
         }
@@ -119,8 +118,7 @@ public partial class MainWindow
         int TileWidth,
         int TileHeight,
         string License,
-        IReadOnlyList<string>? RequestedCapabilities = null,
-        int SecurityTier = 0);
+        IReadOnlyList<string>? RequestedCapabilities = null);
 
     // Walk up from the running editor's BaseDirectory looking for the
     // editor solution. Mirrors the existing FindVolumeMixerProject /
@@ -735,7 +733,7 @@ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>";
         };
         var permissionsHint = new TextBlock
         {
-            Text = "ui.render is always included. Storage permissions use security tier 1 and can be changed later from Project → Permissions.",
+            Text = "ui.render is always included. The security tier is calculated from the selected permissions and can be reviewed later from Project → Permissions.",
             FontSize = 11,
             Foreground = Brushes.Gray,
             Margin = new Thickness(0, 4, 0, 0),
@@ -801,8 +799,7 @@ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>";
             var capabilities = new List<string> { UiRenderCapability };
             if (storageRead.IsChecked == true) capabilities.Add(ModuleStorageReadCapability);
             if (storageWrite.IsChecked == true) capabilities.Add(ModuleStorageWriteCapability);
-            var tier = capabilities.Count > 1 ? 1 : 0;
-            tcs.TrySetResult(new NewModuleSpec(rawName, w, h, license, capabilities, tier));
+            tcs.TrySetResult(new NewModuleSpec(rawName, w, h, license, capabilities));
             window.Close();
         };
         cancel.Click += (_, _) =>

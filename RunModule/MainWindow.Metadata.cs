@@ -127,16 +127,17 @@ public partial class MainWindow
             .OrderBy(c => c, StringComparer.Ordinal)
             .ToList();
 
-        // Module storage is privileged relative to rendering, so a manifest
-        // requesting it can never be saved with an insufficient tier.
-        if (manifest.RequestedCapabilities.Contains(ModuleStorageReadCapability, StringComparer.Ordinal) ||
-            manifest.RequestedCapabilities.Contains(ModuleStorageWriteCapability, StringComparer.Ordinal))
-            manifest.SecurityTier = Math.Max(manifest.SecurityTier, 1);
-        manifest.SecurityTier = Math.Max(0, manifest.SecurityTier);
+        manifest.SecurityTier = DetermineSecurityTier(manifest.RequestedCapabilities);
 
         File.WriteAllText(Path.Combine(folder, "docklys.manifest.json"),
             JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
     }
+
+    private static int DetermineSecurityTier(IEnumerable<string> capabilities) =>
+        capabilities.Contains(ModuleStorageReadCapability, StringComparer.Ordinal) ||
+        capabilities.Contains(ModuleStorageWriteCapability, StringComparer.Ordinal)
+            ? 1
+            : 0;
 
     private static string DetectLicense(string folder, string current)
     {
@@ -216,22 +217,31 @@ public partial class MainWindow
             Width = 180,
             Text = manifest.Version,
         };
-        var tier = new TextBox
+        var tierSummary = new TextBlock
         {
-            Width = 120,
-            Text = manifest.SecurityTier.ToString(),
+            FontSize = 11,
+            Foreground = Brushes.Gray,
         };
+        void UpdateTierSummary()
+        {
+            var computedTier = DetermineSecurityTier(new[]
+            {
+                storageRead.IsChecked == true ? ModuleStorageReadCapability : "",
+                storageWrite.IsChecked == true ? ModuleStorageWriteCapability : "",
+            });
+            tierSummary.Text = computedTier == 1
+                ? "Calculated security tier: 1 (module storage)"
+                : "Calculated security tier: 0 (UI only)";
+        }
+        storageRead.IsCheckedChanged += (_, _) => UpdateTierSummary();
+        storageWrite.IsCheckedChanged += (_, _) => UpdateTierSummary();
+        UpdateTierSummary();
         var save = new Button { Content = "Save permissions", IsDefault = true, Padding = new Thickness(16, 4) };
         var cancel = new Button { Content = "Cancel", IsCancel = true, Padding = new Thickness(16, 4) };
         Window? dialog = null;
 
         save.Click += (_, _) =>
         {
-            if (!int.TryParse(tier.Text, out var selectedTier) || selectedTier < 0)
-            {
-                tier.Focus();
-                return;
-            }
             var capabilities = extra.Text?
                 .Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList() ?? new List<string>();
@@ -240,7 +250,6 @@ public partial class MainWindow
             if (storageWrite.IsChecked == true) capabilities.Add(ModuleStorageWriteCapability);
 
             manifest.Version = version.Text ?? "";
-            manifest.SecurityTier = selectedTier;
             manifest.RequestedCapabilities = capabilities;
             WriteManifest(folder, manifest);
             CopyMetaToOutput(folder, "OutputModuleDLL");
@@ -263,15 +272,14 @@ public partial class MainWindow
                 Children =
                 {
                     new TextBlock { Text = $"{entry.FolderName} manifest", FontSize = 16, FontWeight = FontWeight.SemiBold },
-                    new TextBlock { Text = "Request only the capabilities this module needs. Storage permissions require security tier 1.", FontSize = 11, Foreground = Brushes.Gray, TextWrapping = TextWrapping.Wrap },
+                    new TextBlock { Text = "Request only the capabilities this module needs. The security tier is calculated from the selected capabilities.", FontSize = 11, Foreground = Brushes.Gray, TextWrapping = TextWrapping.Wrap },
                     new TextBlock { Text = $"Module ID: {entry.FolderName}", FontSize = 11, Foreground = Brushes.Gray },
                     new TextBlock { Text = "Manifest version", Margin = new Thickness(0, 8, 0, 0) },
                     version,
                     render,
                     storageRead,
                     storageWrite,
-                    new TextBlock { Text = "Security tier", Margin = new Thickness(0, 8, 0, 0) },
-                    tier,
+                    tierSummary,
                     new TextBlock { Text = "Additional capabilities", Margin = new Thickness(0, 8, 0, 0) },
                     extra,
                     new StackPanel

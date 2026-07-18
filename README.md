@@ -12,6 +12,22 @@ It contains:
 - **`VolumeMixer`**: A real-world reference module to learn from.
 - **`Docklys.ModuleContracts`**: The shared interfaces and theme constants every module uses.
 
+## AI, Security, and Cross-Platform Policy
+
+AI coding assistants working in this repository must read [Documentation.md](Documentation.md) and [AIArchitecture.md](AIArchitecture.md) before changing module or editor code. The repository-level AI instruction files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and their companion files) repeat this requirement for the common coding assistants.
+
+Every module has a `docklys.manifest.json` beside its project. It declares the module identity, version, security tier, and only the capabilities the module needs. `ui.render` is always required. A module that reads or writes its own per-instance settings must request `storage.module.read` and `storage.module.write` at `security_tier` 1. Use **Project → Permissions** in the editor to review or change these fields; the New Module dialog starts with module-storage permissions selected as a useful template foundation.
+
+Modules should work on Windows, macOS, and Linux from the beginning. Use Avalonia and .NET cross-platform APIs first, keep native code behind operating-system checks, and provide a safe fallback when a native integration is unavailable. Before shipping, build and test the module on all three desktop operating systems; the detailed checklist is in [Documentation.md](Documentation.md#cross-platform-first-development).
+
+## Documentation Map
+
+- [Documentation.md](Documentation.md) — module authoring, manifests, persistence, web modules, and the cross-platform checklist.
+- [AIArchitecture.md](AIArchitecture.md) — host/editor lifecycle, module discovery, reload behavior, and platform architecture.
+- [SECURITY.md](SECURITY.md) — manifest invariants, automatic tier calculation, trust boundaries, dependency review, and security release checks.
+- [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) — preferred .NET/Avalonia libraries, error handling, portability, and verification standards.
+- [AI_INSTRUCTIONS.md](AI_INSTRUCTIONS.md) — the mandatory workflow for AI coding tools.
+
 ## Editor Interface & Features
 
 When you launch the `RunModule` project, you will see a comprehensive toolbar and preview area. Here is what every button does:
@@ -45,6 +61,7 @@ The commands appear in this order:
    - **Play slide animation:** Loops the Docklys slide-in and slide-out transition.
 7. **Files:** Captures Docklys or opens preview images, build output, installed modules, and module saves.
 8. **Project:** Opens module information, license selection, and publishing tools.
+   It also contains **Permissions**, which edits `docklys.manifest.json` for the active module.
 9. **Help & legal:** Opens the Terms of Service, Privacy Policy, and support pages.
 
 ## AppData & Saving Settings

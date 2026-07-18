@@ -16,6 +16,7 @@ The `Id` must be unique. The host supplies `UniqueModuleId` through `SetModuleId
 - `DefaultModule.axaml` — starter Avalonia view.
 - `DefaultModule.axaml.cs` — `IModule` metadata and module control.
 - `docklys.json` — package metadata used by Docklys.
+- `docklys.manifest.json` — security tier and requested capabilities. The template starts with module-scoped storage permissions at tier 1; remove them through **Project → Permissions** if the module remains stateless.
 - `DefaultModule.csproj` — .NET 9 project; copies the built DLL to `../OutputModuleDLL`.
 
 ## Build
@@ -24,4 +25,4 @@ The `Id` must be unique. The host supplies `UniqueModuleId` through `SetModuleId
 dotnet build DefaultModule/DefaultModule.csproj
 ```
 
-For guidance on module metadata, theme resources, settings storage, and deployment, see the repository [README](../README.md) and [Documentation](../Documentation.md).
+For guidance on module metadata, permissions, cross-platform behavior, theme resources, settings storage, and deployment, see the repository [README](../README.md), [Documentation](../Documentation.md), [AI Architecture](../AIArchitecture.md), [Security Policy](../SECURITY.md), and [Engineering Standards](../ENGINEERING_STANDARDS.md).
