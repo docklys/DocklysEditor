@@ -29,6 +29,29 @@ public partial class MainWindow
         [JsonPropertyName("githubRepo")]  public string GithubRepo  { get; set; } = "";
     }
 
+    private sealed class DocklysManifest
+    {
+        [JsonPropertyName("schema_version")] public int SchemaVersion { get; set; } = 1;
+        [JsonPropertyName("module_id")] public string ModuleId { get; set; } = "";
+        [JsonPropertyName("version")] public string Version { get; set; } = "1.0.0";
+        [JsonPropertyName("security_tier")] public int SecurityTier { get; set; }
+        [JsonPropertyName("requested_capabilities")] public List<string> RequestedCapabilities { get; set; } = new();
+    }
+
+    private const string UiRenderCapability = "ui.render";
+    private const string ModuleStorageReadCapability = "storage.module.read";
+    private const string ModuleStorageWriteCapability = "storage.module.write";
+
+    // New modules start with the safe, practical baseline: rendering plus access
+    // to their own per-instance settings. Authors can reduce or extend it later
+    // from Project → Permissions.
+    private static readonly string[] TemplateCapabilities =
+    {
+        UiRenderCapability,
+        ModuleStorageReadCapability,
+        ModuleStorageWriteCapability,
+    };
+
     // Called from ShowModuleAtIndex after a module entry is displayed.
     private void RefreshMetaForCurrentModule()
     {
@@ -66,6 +89,55 @@ public partial class MainWindow
             JsonSerializer.Serialize(meta, new JsonSerializerOptions { WriteIndented = true }));
     }
 
+    private static DocklysManifest ReadManifest(string folder, string moduleId)
+    {
+        var path = Path.Combine(folder, "docklys.manifest.json");
+        try
+        {
+            if (File.Exists(path))
+            {
+                var manifest = JsonSerializer.Deserialize<DocklysManifest>(File.ReadAllText(path));
+                if (manifest != null)
+                {
+                    manifest.ModuleId = string.IsNullOrWhiteSpace(manifest.ModuleId) ? moduleId : manifest.ModuleId;
+                    manifest.RequestedCapabilities ??= new List<string>();
+                    return manifest;
+                }
+            }
+        }
+        catch { }
+
+        return new DocklysManifest
+        {
+            ModuleId = moduleId,
+            RequestedCapabilities = new List<string> { UiRenderCapability },
+        };
+    }
+
+    private static void WriteManifest(string folder, DocklysManifest manifest)
+    {
+        manifest.SchemaVersion = 1;
+        manifest.ModuleId = manifest.ModuleId.Trim();
+        manifest.Version = string.IsNullOrWhiteSpace(manifest.Version) ? "1.0.0" : manifest.Version.Trim();
+        manifest.RequestedCapabilities = manifest.RequestedCapabilities
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Select(c => c.Trim())
+            .Append(UiRenderCapability)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(c => c, StringComparer.Ordinal)
+            .ToList();
+
+        // Module storage is privileged relative to rendering, so a manifest
+        // requesting it can never be saved with an insufficient tier.
+        if (manifest.RequestedCapabilities.Contains(ModuleStorageReadCapability, StringComparer.Ordinal) ||
+            manifest.RequestedCapabilities.Contains(ModuleStorageWriteCapability, StringComparer.Ordinal))
+            manifest.SecurityTier = Math.Max(manifest.SecurityTier, 1);
+        manifest.SecurityTier = Math.Max(0, manifest.SecurityTier);
+
+        File.WriteAllText(Path.Combine(folder, "docklys.manifest.json"),
+            JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
     private static string DetectLicense(string folder, string current)
     {
         var lf = Path.Combine(folder, "LICENSE.txt");
@@ -91,6 +163,10 @@ public partial class MainWindow
         if (File.Exists(metaSrc))
             File.Copy(metaSrc, Path.Combine(outDir, "docklys.json"), overwrite: true);
 
+        var manifestSrc = Path.Combine(folder, "docklys.manifest.json");
+        if (File.Exists(manifestSrc))
+            File.Copy(manifestSrc, Path.Combine(outDir, "docklys.manifest.json"), overwrite: true);
+
         var imgSrc = Path.Combine(folder, "Images");
         if (!Directory.Exists(imgSrc)) return;
         var imgDst = Path.Combine(outDir, "Images");
@@ -104,6 +180,113 @@ public partial class MainWindow
     {
         var e = ext.ToLowerInvariant();
         return e is ".webp" or ".png" or ".jpg" or ".jpeg";
+    }
+
+    private async void OnPermissionsClick(object? sender, RoutedEventArgs e)
+    {
+        if (_catalog.Count == 0)
+        {
+            await ShowMessageDialog("Permissions", "No module is loaded.");
+            return;
+        }
+
+        var entry = _catalog[Math.Clamp(_currentIndex, 0, _catalog.Count - 1)];
+        var folder = Path.GetDirectoryName(entry.CsprojPath)!;
+        var manifest = ReadManifest(folder, entry.FolderName);
+        manifest.ModuleId = entry.FolderName;
+
+        var requested = manifest.RequestedCapabilities.ToHashSet(StringComparer.Ordinal);
+        var render = new CheckBox { Content = "ui.render — render the module UI", IsChecked = true, IsEnabled = false };
+        var storageRead = new CheckBox { Content = "storage.module.read — read this module's saved settings", IsChecked = requested.Contains(ModuleStorageReadCapability) };
+        var storageWrite = new CheckBox { Content = "storage.module.write — save this module's settings", IsChecked = requested.Contains(ModuleStorageWriteCapability) };
+        var extra = new TextBox
+        {
+            Width = 440,
+            MinHeight = 58,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            Watermark = "One additional capability per line",
+            Text = string.Join(Environment.NewLine, requested.Except(new[]
+            {
+                UiRenderCapability, ModuleStorageReadCapability, ModuleStorageWriteCapability
+            }, StringComparer.Ordinal)),
+        };
+        var version = new TextBox
+        {
+            Width = 180,
+            Text = manifest.Version,
+        };
+        var tier = new TextBox
+        {
+            Width = 120,
+            Text = manifest.SecurityTier.ToString(),
+        };
+        var save = new Button { Content = "Save permissions", IsDefault = true, Padding = new Thickness(16, 4) };
+        var cancel = new Button { Content = "Cancel", IsCancel = true, Padding = new Thickness(16, 4) };
+        Window? dialog = null;
+
+        save.Click += (_, _) =>
+        {
+            if (!int.TryParse(tier.Text, out var selectedTier) || selectedTier < 0)
+            {
+                tier.Focus();
+                return;
+            }
+            var capabilities = extra.Text?
+                .Split(new[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList() ?? new List<string>();
+            capabilities.Add(UiRenderCapability);
+            if (storageRead.IsChecked == true) capabilities.Add(ModuleStorageReadCapability);
+            if (storageWrite.IsChecked == true) capabilities.Add(ModuleStorageWriteCapability);
+
+            manifest.Version = version.Text ?? "";
+            manifest.SecurityTier = selectedTier;
+            manifest.RequestedCapabilities = capabilities;
+            WriteManifest(folder, manifest);
+            CopyMetaToOutput(folder, "OutputModuleDLL");
+            dialog?.Close();
+        };
+        cancel.Click += (_, _) => dialog?.Close();
+
+        dialog = new Window
+        {
+            Title = "Module permissions",
+            Width = 520,
+            MinWidth = 420,
+            SizeToContent = SizeToContent.Height,
+            CanResize = true,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new StackPanel
+            {
+                Margin = new Thickness(16),
+                Spacing = 8,
+                Children =
+                {
+                    new TextBlock { Text = $"{entry.FolderName} manifest", FontSize = 16, FontWeight = FontWeight.SemiBold },
+                    new TextBlock { Text = "Request only the capabilities this module needs. Storage permissions require security tier 1.", FontSize = 11, Foreground = Brushes.Gray, TextWrapping = TextWrapping.Wrap },
+                    new TextBlock { Text = $"Module ID: {entry.FolderName}", FontSize = 11, Foreground = Brushes.Gray },
+                    new TextBlock { Text = "Manifest version", Margin = new Thickness(0, 8, 0, 0) },
+                    version,
+                    render,
+                    storageRead,
+                    storageWrite,
+                    new TextBlock { Text = "Security tier", Margin = new Thickness(0, 8, 0, 0) },
+                    tier,
+                    new TextBlock { Text = "Additional capabilities", Margin = new Thickness(0, 8, 0, 0) },
+                    extra,
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        HorizontalAlignment = HorizontalAlignment.Right,
+                        Spacing = 8,
+                        Margin = new Thickness(0, 8, 0, 0),
+                        Children = { cancel, save },
+                    },
+                },
+            },
+        };
+        StyleDialog(dialog);
+        await dialog.ShowDialog(this);
     }
 
     // ── GitHub description ──────────────────────────────────────────────────────

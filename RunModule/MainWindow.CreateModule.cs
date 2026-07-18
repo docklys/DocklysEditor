@@ -78,6 +78,12 @@ public partial class MainWindow
         try
         {
             CloneModuleInto(solutionDir, targetDir, name, spec.TileWidth, spec.TileHeight, templateName);
+            var manifest = ReadManifest(targetDir, name);
+            manifest.ModuleId = name;
+            manifest.RequestedCapabilities = spec.RequestedCapabilities?.ToList()
+                ?? TemplateCapabilities.ToList();
+            manifest.SecurityTier = spec.SecurityTier;
+            WriteManifest(targetDir, manifest);
             GenerateLicenseFile(targetDir, spec.License);
         }
         catch (Exception ex)
@@ -108,7 +114,13 @@ public partial class MainWindow
         await ShowMessageDialog("Module created", msg);
     }
 
-    private sealed record NewModuleSpec(string Name, int TileWidth, int TileHeight, string License);
+    private sealed record NewModuleSpec(
+        string Name,
+        int TileWidth,
+        int TileHeight,
+        string License,
+        IReadOnlyList<string>? RequestedCapabilities = null,
+        int SecurityTier = 0);
 
     // Walk up from the running editor's BaseDirectory looking for the
     // editor solution. Mirrors the existing FindVolumeMixerProject /
@@ -708,6 +720,28 @@ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>";
             TextWrapping = TextWrapping.Wrap,
         };
 
+        // The template is intended to be a useful foundation, including
+        // per-module settings. Keep the related permissions selected by
+        // default; authors can opt out here or later under Project → Permissions.
+        var storageRead = new CheckBox
+        {
+            Content = "Allow reading this module's saved settings",
+            IsChecked = true,
+        };
+        var storageWrite = new CheckBox
+        {
+            Content = "Allow saving this module's settings",
+            IsChecked = true,
+        };
+        var permissionsHint = new TextBlock
+        {
+            Text = "ui.render is always included. Storage permissions use security tier 1 and can be changed later from Project → Permissions.",
+            FontSize = 11,
+            Foreground = Brushes.Gray,
+            Margin = new Thickness(0, 4, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+        };
+
         var okBtn = new Button { Content = "Create", IsDefault = true, Padding = new Thickness(16, 4) };
         var cancel = new Button
         {
@@ -741,6 +775,10 @@ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>";
                     new TextBlock { Text = "License", Foreground = Brushes.White, Margin = new Thickness(0, 12, 0, 0) },
                     licenseBox,
                     licenseHint,
+                    new TextBlock { Text = "Permissions", Foreground = Brushes.White, Margin = new Thickness(0, 12, 0, 0) },
+                    storageRead,
+                    storageWrite,
+                    permissionsHint,
                     new StackPanel
                     {
                         Orientation = Orientation.Horizontal,
@@ -760,7 +798,11 @@ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>";
             if (!int.TryParse(widthBox.Text, out var w) || w < 1) { widthBox.Focus(); return; }
             if (!int.TryParse(heightBox.Text, out var h) || h < 1) { heightBox.Focus(); return; }
             var license = licenseBox.SelectedItem?.ToString() ?? "None";
-            tcs.TrySetResult(new NewModuleSpec(rawName, w, h, license));
+            var capabilities = new List<string> { UiRenderCapability };
+            if (storageRead.IsChecked == true) capabilities.Add(ModuleStorageReadCapability);
+            if (storageWrite.IsChecked == true) capabilities.Add(ModuleStorageWriteCapability);
+            var tier = capabilities.Count > 1 ? 1 : 0;
+            tcs.TrySetResult(new NewModuleSpec(rawName, w, h, license, capabilities, tier));
             window.Close();
         };
         cancel.Click += (_, _) =>
