@@ -54,6 +54,7 @@ Do not present a tier picker, hand-edit a tier, or retain an old higher tier aft
 ### Module state
 
 - Store module settings only under `Docklys/ModuleSaves/<ModuleName>/<UniqueModuleId>.json` in the platform application-data directory.
+- An approved host integration may establish a separate module-owned support-data boundary at `LocalApplicationData/Docklys/Modules/<ModuleName>/<UniqueModuleId>/` when it genuinely needs persistent non-settings data. This is not a general filesystem permission: sanitize the instance ID, create only that directory, and never derive paths from untrusted input.
 - Include `UniqueModuleId` in every persistence key and filename.
 - Create the module directory before writing; use atomic-replacement patterns where a partially written settings file would be harmful.
 - Deserialize defensively. Catch malformed JSON, validate values and ranges, then fall back to safe defaults without deleting unrelated data.
@@ -67,7 +68,7 @@ Do not present a tier picker, hand-edit a tier, or retain an old higher tier aft
 
 ## 4. Native, process, and network boundaries
 
-- Prefer managed, cross-platform APIs. Isolate every OS-specific API or external process in a small service that checks its operating system and availability.
+- Modules must not start processes, open raw network sockets, or issue direct network requests. A privileged operation must be implemented by a narrow, host-owned contract that enforces consent, validation, lifecycle ownership, OS guards, destination allowlists where relevant, and a safe fallback.
 - Validate executable paths and arguments. Never concatenate untrusted input into a shell command; use argument lists where available.
 - Treat downloaded files and network responses as untrusted. Validate type, size, destination, and expected identity before loading or executing anything.
 - Web modules must declare allowed hosts and navigation behavior through `IWebViewModule`; do not bypass the host's navigation hardening or native-view lifecycle controls.

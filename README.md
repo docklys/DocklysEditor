@@ -76,6 +76,8 @@ The exact path convention your code must use is:
 
 *Note for AI Coders: Ensure you include `UniqueModuleId` in the filename to prevent multiple instances of the same module from overwriting each other's settings.*
 
+An approved host integration may additionally use `LocalApplicationData/Docklys/Modules/<ModuleName>/<UniqueModuleId>/` for module-owned persistent support data. This exception does not permit arbitrary filesystem access; instance IDs must be sanitized and ordinary settings still belong in `ModuleSaves`.
+
 ## Tutorial: Setting Up Your First Module
 
 Follow these steps to create your first module from scratch:

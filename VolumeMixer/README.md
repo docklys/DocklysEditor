@@ -6,14 +6,14 @@
 
 - Discovers active audio sessions and assigns one to each slider.
 - Controls Windows audio sessions through NAudio.
-- Controls Linux PulseAudio or PipeWire-Pulse sessions through `pactl`.
+- Shows a safe unavailable state on Linux and macOS until Docklys provides a host-owned audio-session bridge.
 - Resolves application icons where available.
 - Keeps sliders for the same application synchronized across live Volume Mixer instances.
 - Uses Docklys dynamic theme resources for the module background, foreground, and accent color.
 
 ## Requirements
 
-- Windows, or Linux with `pactl` available. PipeWire installations are supported when they expose the PulseAudio-compatible `pipewire-pulse` service.
+- Windows. Linux and macOS construct safely but do not expose audio-session controls yet.
 - .NET 8 SDK to build.
 
 No audio controls are shown when no supported audio-session backend is available.

@@ -236,6 +236,17 @@ public partial class MainWindow
             current = current.InnerException;
             if (current != null) sb.Append("  → ");
         }
+
+        // A module built against a newer Avalonia patch can be discovered while a
+        // long-running editor still has the previous patch loaded. Assemblies in the
+        // default load context cannot be replaced in-process, so make the recovery
+        // action explicit instead of presenting an opaque TypeLoadException.
+        if (sb.ToString().Contains("Avalonia.Markup.Xaml.Diagnostics.XamlSourceInfo", StringComparison.Ordinal))
+        {
+            sb.AppendLine();
+            sb.AppendLine("Resolution: close every running Docklys Editor window, then rebuild and start the editor again. The module and editor must use the same Avalonia patch version.");
+        }
+
         return sb.ToString().TrimEnd();
     }
 

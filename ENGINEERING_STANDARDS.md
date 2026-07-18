@@ -10,7 +10,7 @@ Use this document when selecting libraries, writing module code, or evaluating a
 | Module state and manifests | `System.Text.Json` | Built into modern .NET, UTF-8 native, and suited to small typed JSON documents. Use typed DTOs and validation; never use unsafe binary serialization. |
 | Files and paths | `System.IO`, `Path`, `Environment.SpecialFolder.ApplicationData` | Cross-platform path handling without hard-coded OS locations. |
 | Logging | `Microsoft.Extensions.Logging` when structured logging is needed | Prefer structured event properties and redaction. Do not introduce a logging package for a few local diagnostics. |
-| HTTP | `HttpClient` with explicit timeout, cancellation, host validation, and bounded response handling | Add `Microsoft.Extensions.Http.Resilience` only when an actual remote integration needs retry/circuit-breaker policies. Retries must not repeat non-idempotent actions by default. |
+| HTTP | A narrow host-owned remote-integration contract for modules; `HttpClient` only within reviewed host code | The host applies destination allowlists, timeout, cancellation, and bounded response handling. Add `Microsoft.Extensions.Http.Resilience` only when a host remote integration needs retry/circuit-breaker policies. Retries must not repeat non-idempotent actions by default. |
 | Concurrency | `async`/`await`, `CancellationToken`, `Task` | Keep UI updates on the Avalonia UI thread; cancel stale work on module unload/reload. |
 | Native integration | A narrow platform service behind `OperatingSystem` checks | Keep native libraries and process control optional, isolated, and replaceable with a safe fallback. |
 
@@ -23,6 +23,7 @@ Module project files are declarative: do not add custom MSBuild `Target` blocks,
 ### Module boundaries
 
 - A module is an `IModule` `UserControl`; it owns its UI and module-scoped state, while the host owns discovery, native webview lifetime, docking, profiles, skins, and global policy.
+- Modules do not invoke processes, use raw sockets, or make direct HTTP calls. Define a small host contract for an approved integration; do not create a general-purpose process or network escape hatch.
 - Keep constructor work cheap and non-failing. Attach visual work in the appropriate lifecycle event and release cancellable work when the module unloads.
 - Use `UniqueModuleId` for state isolation. Never use a static mutable setting as the only source of per-instance state.
 
@@ -48,7 +49,7 @@ For every feature, record this design review before implementation:
 |---|---|
 | Does it use an Avalonia/.NET API that works on Windows, macOS, and Linux? | If no, isolate it behind a platform service. |
 | What happens on an unsupported OS or missing native dependency? | A clear fallback/disabled UI; no constructor failure. |
-| Are paths, process invocation, and user data portable? | Use `Path`, application-data folders, and argument APIs. |
+| Are paths, privileged operations, and user data portable? | Use `Path` and application-data folders in modules; put process invocation and network transport behind a host-owned contract. |
 | Does the package ship required native assets on every target? | Verify before adding it. |
 | How will it be validated? | Build and exercise the changed project on all three OSes. |
 

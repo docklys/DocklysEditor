@@ -216,6 +216,19 @@ private static readonly string SettingsPath = Path.Combine(
    - **Save:** Only save when the user changes a setting (e.g., toggling a switch or ending a slider drag). **Never auto-save in the `Unloaded` event**. Tab switches detach and re-attach modules rapidly; saving on `Unloaded` will thrash the user's disk.
 4. **Use JSON:** Stick to `System.Text.Json` for simple, human-readable configurations.
 
+### Approved integration support data
+
+The settings location above is the default and remains mandatory for normal module settings. A module that consumes an approved host integration may also create its own support-data directory only when that integration requires persistent non-settings data:
+
+```csharp
+var moduleDataRoot = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+    "Docklys", "Modules", "Clock", Sanitize(UniqueModuleId));
+Directory.CreateDirectory(moduleDataRoot);
+```
+
+This is a module-owned boundary, not permission to write arbitrary filesystem locations. Sanitize the host-assigned instance ID; do not turn user input into a path. On current .NET, `LocalApplicationData` maps to the native Windows, macOS, and Linux data location. Do not use the temporary directory for persistent state.
+
 ```csharp
 private void SaveState() {
     Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
@@ -391,6 +404,7 @@ Use the files below—not invented model-name files—because these are the inst
 
 - [SECURITY.md](SECURITY.md) is authoritative for manifest invariants, capability minimization, automatic tier calculation, untrusted input, secret handling, and security release checks.
 - [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) is authoritative for library selection, dependency review, cross-platform design, lifecycle safety, and the verification ladder.
+- [MODULE_APPROVAL.md](MODULE_APPROVAL.md) is authoritative for public-safe approval evidence, the package allowlist, vulnerability verdicts, declarative project files, and host-owned privileged integrations.
 - These documents complement this guide. When a change affects permissions, data storage, dependencies, process execution, network behavior, native interop, or platform support, read both before implementation.
 
 ### Cross-platform-first development
@@ -421,3 +435,5 @@ dotnet build <module-project>.csproj
 An empty vulnerability report is necessary but not sufficient: also document the package's purpose, licensing, desktop support, transitive/native assets, and fallback. Do not put review-system procedures, credentials, tokens, or private deployment data in module documentation or approval evidence.
 
 Module project files must remain declarative. Do not use custom MSBuild `Target` blocks, `Exec` tasks, or build-time copy/deployment actions; these are rejected because they can execute arbitrary build-time behavior. Build normally and let the collector use the standard Release output.
+
+Modules must not invoke processes, open raw sockets, or make direct HTTP calls. If a feature needs a native executable, device transport, or remote service, define a narrow, versioned host contract with consent, validation, destination policy where applicable, lifecycle ownership, and a clear unavailable-state. Do not add a generic bridge merely to bypass the module boundary.

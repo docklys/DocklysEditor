@@ -25,9 +25,9 @@ If documents conflict, stop and report the conflict. Do not silently choose the 
 - Request the smallest capability set. Every visible module uses `ui.render`. Only modules that persist their own settings request `storage.module.read` and/or `storage.module.write`.
 - The editor calculates `security_tier`; authors never set it. Storage capability means tier 1; UI-only means tier 0. Never hand-edit a tier to bypass this mapping.
 - Never request a capability for speculative future work. Change permissions only through **Project → Permissions** or the documented manifest schema.
-- Persist only module-owned data under `ModuleSaves/<ModuleName>/<UniqueModuleId>.json`. Treat all loaded JSON and external input as untrusted; handle malformed data without crashing the module.
+- Persist ordinary module settings only under `ModuleSaves/<ModuleName>/<UniqueModuleId>.json`. An approved host integration may use the module-owned `LocalApplicationData/Docklys/Modules/<ModuleName>/<UniqueModuleId>/` support-data boundary; sanitize the instance ID and never derive paths from untrusted input. Treat all loaded JSON and external input as untrusted; handle malformed data without crashing the module.
 - Never log secrets, tokens, cookies, full private paths, or user content. Never commit credentials, generated secrets, or local configuration.
-- Do not weaken signature verification, module loading policy, navigation allowlists, sandboxing, or dependency checks to make a feature work.
+- Do not weaken signature verification, module loading policy, navigation allowlists, sandboxing, or dependency checks to make a feature work. Modules must not start processes, open raw sockets, or issue direct network requests; add a narrow host contract when a privileged integration is required.
 - Do not add custom MSBuild targets, `Exec` tasks, or build-time copy/deployment steps to a module project. The collector uses standard Release build output.
 
 ## Cross-platform rules

@@ -1,25 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>net9.0</TargetFramework>
+        <Version>1.1.0</Version>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
     </PropertyGroup>
     <ItemGroup>
+      <Compile Remove="Contracts\**\*.cs" />
       <Compile Update="scrcpy.axaml.cs">
         <DependentUpon>scrcpy.axaml</DependentUpon>
       </Compile>
-    </ItemGroup>
-    <ItemGroup>
-      <!-- The server jar ships inside the DLL so the module carries its own scrcpy
-           server rather than depending on a system install. The version here must stay
-           in lockstep with AdbClient.ServerVersion: the server aborts on mismatch. -->
-      <EmbeddedResource Include="Assets\scrcpy-server" />
     </ItemGroup>
     <ItemGroup>
       <PackageReference Include="Avalonia" Version="11.3.18" />
       <PackageReference Include="Avalonia.Desktop" Version="11.3.18" />
     </ItemGroup>
     <ItemGroup>
-      <ProjectReference Include="..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj" />
+      <ProjectReference Include="Contracts\Docklys.ModuleContracts.csproj" />
     </ItemGroup>
 </Project>

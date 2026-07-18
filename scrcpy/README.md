@@ -1,6 +1,6 @@
 # scrcpy
 
-`scrcpy` mirrors and controls a connected Android device from a Docklys tile. It embeds the scrcpy server in the module, connects to the device through ADB, decodes the H.264 video stream, and forwards pointer, wheel, keyboard, and text input to Android.
+`scrcpy` mirrors and controls a connected Android device from a Docklys tile. The module renders decoded frames and forwards user input through a reviewed Docklys host contract. The Docklys host, not the module, owns the native mirroring implementation.
 
 ## Features
 
@@ -22,12 +22,10 @@ The bundled `Assets/scrcpy-server` must remain version-compatible with `AdbClien
 
 - `scrcpy.axaml` — phone-screen tile layout.
 - `scrcpy.axaml.cs` — module control, input mapping, and frame rendering.
-- `Native/AdbClient.cs` — ADB communication and embedded-server deployment.
-- `Native/MirrorSession.cs` — session lifecycle and video/control coordination.
-- `Native/H264Decoder.cs` — H.264 frame decoding.
-- `Native/ControlChannel.cs` — Android input commands.
-- `Native/ScrcpyConnection.cs` — scrcpy socket connection.
-- `Assets/scrcpy-server` — embedded scrcpy server binary.
+- `Contracts/` — reviewed contract source submitted with the module.
+- `scrcpy.axaml.cs` — module UI, input mapping, module-data boundary, and host-service consumption.
+
+The host implementation owns ADB communication, server deployment, H.264 decoding, control transport, native helper assets, validation, and per-run consent. Those implementation details do not ship in this module.
 - `LICENSE.txt` — third-party scrcpy license information.
 
 ## Build
@@ -48,4 +46,6 @@ For shared module conventions, see the repository [README](../README.md).
 
 `scrcpy` uses the pinned `Avalonia` and `Avalonia.Desktop` packages defined in the repository [module approval allowlist](../MODULE_APPROVAL.md). Before publishing, run the transitive package audit and build command from that guide.
 
-The module communicates only with a user-authorized Android device through a locally available ADB installation and loopback socket. It validates tool availability before starting and presents a status message when ADB, `ffmpeg`, or the device connection is unavailable. No credentials, private-device data, or approval-system details belong in submission evidence.
+The Docklys host communicates with a user-authorized Android device through a locally available ADB installation and local transport. It validates tool availability before starting and the module presents a status message when the host feature, ADB, `ffmpeg`, or the device connection is unavailable. No credentials, private-device data, or approval-system details belong in submission evidence.
+
+The module itself does not launch ADB or FFmpeg and does not open sockets. It consumes the reviewed `Docklys.ModuleContracts` source included under `Contracts/`; a Docklys host that publishes contract version `1.1.0` supplies the runtime device-mirroring service, consent gate, native-tool validation, and platform fallback.

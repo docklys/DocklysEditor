@@ -29,9 +29,9 @@ namespace VolumeMixer
 
         public string MinAppVersion => "1.0.0";
         public string MaxAppVersion => "1.0.0";
-        // Linux controls PulseAudio sink inputs through pactl. That API is also provided by
-        // PipeWire's pipewire-pulse service, so the same implementation covers both stacks.
-        public string[] SupportedPlatforms => new[] { "Windows", "Linux" };
+        // Linux and macOS remain constructible but show the existing empty-state UI until
+        // Docklys supplies a host-owned audio-session bridge.
+        public string[] SupportedPlatforms => new[] { "Windows" };
 
         private static IAudioSessionBackend? AudioBackend => AudioSessionBackend.Current;
         private static bool AudioSessionsAvailable => AudioBackend is not null;
@@ -329,9 +329,6 @@ namespace VolumeMixer
 
         private IImage? GetIconForSession(IAudioSession session)
         {
-            // System.Drawing icon extraction is a Windows shell feature. Linux applications
-            // use freedesktop.org icon themes instead, then fall back to an app initial.
-            if (OperatingSystem.IsLinux()) return LinuxIconResolver.Load(session);
             if (!OperatingSystem.IsWindows()) return null;
             return GetWindowsIconForSession(session);
         }

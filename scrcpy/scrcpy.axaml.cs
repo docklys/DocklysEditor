@@ -5,8 +5,8 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using Docklys.ModuleContracts;
-using scrcpy.Native;
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,7 +18,7 @@ namespace scrcpy
         // Identification
         public string Id => "scrcpy";
         public string ModuleName => "scrcpy";
-        public string ModuleVersion => "1.0.0";
+        public string ModuleVersion => "1.1.0";
         public string Category => "Default";
         public string[] Tags => new[] { "scrcpy", "android", "mirror", "phone" };
 
@@ -33,14 +33,18 @@ namespace scrcpy
         // Unique Module ID (set by the main app)
         private string _uniqueModuleId = string.Empty;
         public string UniqueModuleId => _uniqueModuleId;
-        public void SetModuleId(string uniqueModuleId) => _uniqueModuleId = uniqueModuleId;
+        public void SetModuleId(string uniqueModuleId)
+        {
+            _uniqueModuleId = uniqueModuleId;
+            EnsureModuleDataRoot();
+        }
         public void PrintModuleId() => Console.WriteLine($"Module ID: {UniqueModuleId}");
 
         // IResizable
         public event Action<int, int>? TileResizeRequested;
         public void SetTileSize(int width, int height) { }
 
-        private MirrorSession? _session;
+        private IDeviceMirrorSession? _session;
         private WriteableBitmap? _bitmap;
         private int _bmpWidth, _bmpHeight;
         private readonly object _frameSync = new();
@@ -50,7 +54,7 @@ namespace scrcpy
         private bool _pointerDown;
         // Retain a valid device point so an off-screen release can still lift the touch.
         private int _lastTouchX, _lastTouchY;
-        private readonly CancellationTokenSource _cts = new();
+        private CancellationTokenSource? _sessionCts;
 
         public scrcpy()
         {
@@ -70,49 +74,62 @@ namespace scrcpy
 
         }
 
-        private void OnAttached(object? sender, VisualTreeAttachmentEventArgs e) => _ = StartAsync();
+        private void OnAttached(object? sender, VisualTreeAttachmentEventArgs e)
+        {
+            _sessionCts?.Dispose();
+            _sessionCts = new CancellationTokenSource();
+            _ = StartAsync(_sessionCts.Token);
+        }
 
         private void OnDetached(object? sender, VisualTreeAttachmentEventArgs e)
         {
-            try { _cts.Cancel(); } catch { }
+            try { _sessionCts?.Cancel(); } catch { }
             var session = _session;
             _session = null;
             if (session != null) _ = session.DisposeAsync().AsTask();
         }
 
-        private async Task StartAsync()
+        private async Task StartAsync(CancellationToken cancellationToken)
         {
             if (_session != null) return;
 
-            var session = new MirrorSession(new ScrcpyOptions
+            if (!DocklysHostServices.TryGetDeviceMirror(out var deviceMirror))
             {
-                // The tile is ~340px wide, so a 1024px-tall stream is already generous and
-                // keeps the encoder and the per-frame copy cost modest.
-                MaxSize = 1024,
-                MaxFps = 60,
-                VideoBitRate = 8_000_000,
-            });
-
-            session.StatusChanged += status =>
-                Dispatcher.UIThread.Post(() => StatusText.Text = status);
-            session.FrameReady += OnFrameReady;
-
-            _session = session;
+                StatusText.Text = "Device mirroring is unavailable in this Docklys host.";
+                return;
+            }
 
             try
             {
-                await session.StartAsync();
+                var session = await deviceMirror.StartAsync(new DeviceMirrorStartOptions
+                {
+                    MaxSize = 1024,
+                    MaxFps = 60,
+                    VideoBitRate = 8_000_000,
+                }, cancellationToken);
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    await session.DisposeAsync();
+                    return;
+                }
+
+                session.StatusChanged += status =>
+                    Dispatcher.UIThread.Post(() => StatusText.Text = status);
+                session.FrameReady += OnFrameReady;
+                _session = session;
             }
             catch (Exception ex)
             {
-                AdbClient.Log($"start failed: {ex.Message}");
                 Dispatcher.UIThread.Post(() => StatusText.Text = ex.Message);
             }
         }
 
-        private void OnFrameReady(byte[] frame, int width, int height)
+        private void OnFrameReady(DeviceMirrorFrame mirrorFrame)
         {
-            if (_cts.IsCancellationRequested) return;
+            if (_sessionCts?.IsCancellationRequested != false) return;
+            var frame = mirrorFrame.BgraPixels;
+            var width = mirrorFrame.Width;
+            var height = mirrorFrame.Height;
 
             // Frame callbacks run on the decoder thread. Coalesce them to one normal UI
             // job: Render-priority work can wait for the next render pass, which may not
@@ -143,7 +160,7 @@ namespace scrcpy
                 _frameUpdateQueued = false;
             }
 
-            if (_cts.IsCancellationRequested || frame == null) return;
+            if (_sessionCts?.IsCancellationRequested != false || frame == null) return;
 
             if (_bitmap == null || _bmpWidth != width || _bmpHeight != height)
             {
@@ -209,7 +226,7 @@ namespace scrcpy
         private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
         {
             var session = _session;
-            if (session?.Control == null) return;
+            if (session == null) return;
             if (!TryMapToDevice(e.GetPosition(InputSurface), out var x, out var y)) return;
 
             _pointerDown = true;
@@ -217,21 +234,19 @@ namespace scrcpy
             _lastTouchY = y;
             InputSurface.Focus();
             e.Pointer.Capture(InputSurface);
-            _ = session.Control.SendTouchAsync(TouchAction.Down, x, y,
-                    session.VideoWidth, session.VideoHeight, 1.0f, _cts.Token);
+            _ = session.SendTouchAsync(DeviceMirrorTouchAction.Down, x, y, 1.0f, _sessionCts?.Token ?? CancellationToken.None);
         }
 
         private void OnPointerMoved(object? sender, PointerEventArgs e)
         {
             if (!_pointerDown) return;
             var session = _session;
-            if (session?.Control == null) return;
+            if (session == null) return;
             if (!TryMapToDevice(e.GetPosition(InputSurface), out var x, out var y)) return;
 
             _lastTouchX = x;
             _lastTouchY = y;
-            _ = session.Control.SendTouchAsync(TouchAction.Move, x, y,
-                    session.VideoWidth, session.VideoHeight, 1.0f, _cts.Token);
+            _ = session.SendTouchAsync(DeviceMirrorTouchAction.Move, x, y, 1.0f, _sessionCts?.Token ?? CancellationToken.None);
         }
 
         private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -259,51 +274,59 @@ namespace scrcpy
             _pointerDown = false;
 
             var session = _session;
-            if (session?.Control == null) return;
+            if (session == null) return;
 
             // Pressure 0 on release, matching what the real client sends for a lift.
-            _ = session.Control.SendTouchAsync(TouchAction.Up, _lastTouchX, _lastTouchY,
-                    session.VideoWidth, session.VideoHeight, 0f, _cts.Token);
+            _ = session.SendTouchAsync(DeviceMirrorTouchAction.Up, _lastTouchX, _lastTouchY, 0f, _sessionCts?.Token ?? CancellationToken.None);
         }
 
         private void OnPointerWheel(object? sender, PointerWheelEventArgs e)
         {
             var session = _session;
-            if (session?.Control == null) return;
+            if (session == null) return;
             if (!TryMapToDevice(e.GetPosition(InputSurface), out var x, out var y)) return;
 
-            _ = session.Control.SendScrollAsync(x, y, session.VideoWidth, session.VideoHeight,
-                    (float)e.Delta.X, (float)e.Delta.Y, _cts.Token);
+            _ = session.SendScrollAsync(x, y, (float)e.Delta.X, (float)e.Delta.Y, _sessionCts?.Token ?? CancellationToken.None);
             e.Handled = true;
         }
 
         private void OnKeyDown(object? sender, KeyEventArgs e)
         {
-            var keycode = e.Key switch
+            var key = e.Key switch
             {
-                Key.Back => AndroidKeycode.Del,
-                Key.Enter => AndroidKeycode.Enter,
-                Key.Escape => AndroidKeycode.Back,
-                _ => -1,
+                Key.Back => DeviceMirrorKey.Backspace,
+                Key.Enter => DeviceMirrorKey.Enter,
+                Key.Escape => DeviceMirrorKey.Back,
+                _ => (DeviceMirrorKey?)null,
             };
-            if (keycode < 0) return;
-            SendKey(keycode);
+            if (key is null) return;
+            SendKey(key.Value);
             e.Handled = true;
         }
 
         private void OnTextInput(object? sender, TextInputEventArgs e)
         {
             var session = _session;
-            if (session?.Control == null || string.IsNullOrEmpty(e.Text)) return;
-            _ = session.Control.SendTextAsync(e.Text, _cts.Token);
+            if (session == null || string.IsNullOrEmpty(e.Text)) return;
+            _ = session.SendTextAsync(e.Text, _sessionCts?.Token ?? CancellationToken.None);
             e.Handled = true;
         }
 
-        private void SendKey(int keycode)
+        private void SendKey(DeviceMirrorKey key)
         {
-            var control = _session?.Control;
-            if (control == null) return;
-            _ = control.TapKeyAsync(keycode, _cts.Token);
+            var session = _session;
+            if (session == null) return;
+            _ = session.SendKeyAsync(key, _sessionCts?.Token ?? CancellationToken.None);
+        }
+
+        private void EnsureModuleDataRoot()
+        {
+            if (string.IsNullOrWhiteSpace(UniqueModuleId)) return;
+            var safeId = string.Concat(UniqueModuleId.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
+            var root = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Docklys", "Modules", "scrcpy", safeId);
+            Directory.CreateDirectory(root);
         }
     }
 }
