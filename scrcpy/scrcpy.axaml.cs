@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 
 namespace scrcpy
 {
-    public partial class scrcpy : UserControl, IModule, IResizable
+    public partial class Scrcpy : UserControl, IModule, IResizable
     {
         // Identification
         public string Id => "scrcpy";
@@ -40,8 +40,10 @@ namespace scrcpy
         }
         public void PrintModuleId() => Console.WriteLine($"Module ID: {UniqueModuleId}");
 
-        // IResizable
+        // IResizable — required by the interface, but this fixed-size tile never raises it.
+#pragma warning disable CS0067
         public event Action<int, int>? TileResizeRequested;
+#pragma warning restore CS0067
         public void SetTileSize(int width, int height) { }
 
         private IDeviceMirrorSession? _session;
@@ -56,7 +58,7 @@ namespace scrcpy
         private int _lastTouchX, _lastTouchY;
         private CancellationTokenSource? _sessionCts;
 
-        public scrcpy()
+        public Scrcpy()
         {
             InitializeComponent();
 
