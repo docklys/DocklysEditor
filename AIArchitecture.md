@@ -14,6 +14,8 @@ Before editing this repository, an AI assistant MUST read `AI_INSTRUCTIONS.md`, 
 
 For every new module or editor feature, treat Windows, macOS, and Linux as first-class targets from the initial design. Prefer Avalonia/.NET APIs; isolate native calls behind platform services; guard them with `OperatingSystem.IsWindows()`, `OperatingSystem.IsMacOS()`, or `OperatingSystem.IsLinux()`; and provide a non-throwing fallback. Build the changed project on all three operating systems before release. Do not use hard-coded OS paths or let a missing native integration prevent a module from being constructed.
 
+Module project files are declarative. Do not add custom MSBuild targets, `Exec` tasks, or build-time copy/deployment actions; the approval collector reads standard Release output and host tooling owns deployment.
+
 ---
 
 ## 1. Module Contract (MCCP)

@@ -32,7 +32,7 @@ No audio controls are shown when no supported audio-session backend is available
 dotnet build VolumeMixer/VolumeMixer.csproj
 ```
 
-The project copies its DLL to `../OutputModuleDLL`. Use **Build & install** in `RunModule` to deploy it to Docklys.
+Build output remains in the standard project `bin` directory. Use **Build & install** in `RunModule` to deploy it to Docklys; the project itself has no build-time deployment target.
 
 ## Module metadata
 

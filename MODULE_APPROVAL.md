@@ -12,6 +12,7 @@ A submission is review-ready only when it has all of the following:
 - A small, cross-platform design. Native APIs and external tools are optional, guarded by the operating system and availability checks, and have a clear non-throwing fallback.
 - Per-instance state stored only in the module save location, with malformed external data handled safely.
 - A complete inventory of direct third-party packages. Every package is pinned, appears in the allowlist below, has a concrete purpose, and has a current vulnerability verdict.
+- A declarative project file. Custom MSBuild `Target` blocks, build-time `Exec` tasks, and project-defined file-copy/deployment steps are forbidden. The collector reads the standard Release build output; deployment belongs to host tooling.
 - A clean `dotnet list <project> package --vulnerable --include-transitive` result, plus a build of the module. Run the relevant lifecycle and fallback checks on Windows, macOS, and Linux before release.
 - No credentials, tokens, cookies, private paths, user data, or approval-system details in the source, artifact, logs, or documentation.
 
@@ -45,6 +46,7 @@ Keep the evidence concise and public-safe:
 2. List direct packages by ID and exact version, referring to this allowlist. Explain every exception before adding it.
 3. Include the result of the transitive vulnerability audit and the affected-project build. Do not paste secrets, full user paths, or raw diagnostic payloads.
 4. For a module that uses a native helper or user-installed executable, state only the user-visible requirement, OS guards, validated invocation boundary, and fallback. Do not publish operational review mechanics or sensitive configuration.
+5. Confirm that the project file contains no custom MSBuild execution. Build only with SDK standard targets and submit the normal Release output.
 
 For `scrcpy`, the public-facing evidence is: a user-authorized Android device, a locally available ADB installation, a local loopback connection, and an optional `ffmpeg` executable. The module must show an understandable status message if a dependency is unavailable; it must not request speculative manifest permissions to compensate.
 
@@ -56,4 +58,5 @@ Before an AI changes a module, it must:
 2. Keep the manifest least-privilege and let the editor derive its tier.
 3. Prefer .NET/Avalonia APIs, guard native behavior on Windows, macOS, and Linux, and retain a safe fallback.
 4. Refuse to add an unallowlisted package or downgrade a reviewed package without a new review record and successful advisory audit.
-5. Build the affected project, run its package audit, validate manifests, and explicitly report platforms that were not tested.
+5. Never add a custom MSBuild target, `Exec` task, or build-time copy/deployment action to a module project.
+6. Build the affected project, run its package audit, validate manifests, and explicitly report platforms that were not tested.

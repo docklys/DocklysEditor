@@ -80,6 +80,7 @@ Do not present a tier picker, hand-edit a tier, or retain an old higher tier aft
 3. Confirm Windows, macOS, and Linux support, licensing, maintenance, transitive native assets, and known advisories.
 4. Pin a compatible version in the project file and verify that private runtime dependencies are deployed with the module where required.
 5. Remove unused packages and never suppress a vulnerability warning without a documented risk decision and mitigation.
+6. Keep module project files declarative. Custom MSBuild targets, `Exec` tasks, and build-time deployment/copy actions are forbidden because they expand the build-time execution boundary.
 
 See [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) for preferred libraries and usage boundaries.
 For the publication evidence, explicit package allowlist, and current vulnerability-verdict process, see [MODULE_APPROVAL.md](MODULE_APPROVAL.md). That guide intentionally contains only public-safe foundations, never private approval mechanics or credentials.

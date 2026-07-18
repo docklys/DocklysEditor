@@ -17,7 +17,7 @@ The `Id` must be unique. The host supplies `UniqueModuleId` through `SetModuleId
 - `DefaultModule.axaml.cs` — `IModule` metadata and module control.
 - `docklys.json` — package metadata used by Docklys.
 - `docklys.manifest.json` — security tier and requested capabilities. The template starts with module-scoped storage permissions at tier 1; remove them through **Project → Permissions** if the module remains stateless.
-- `DefaultModule.csproj` — .NET 9 project; copies the built DLL to `../OutputModuleDLL`.
+- `DefaultModule.csproj` — declarative .NET 9 project; the collector reads its standard Release output.
 
 ## Build
 

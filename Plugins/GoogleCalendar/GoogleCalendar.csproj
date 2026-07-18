@@ -10,12 +10,4 @@
     <ItemGroup>
         <ProjectReference Include="..\..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj" />
     </ItemGroup>
-    <PropertyGroup>
-        <OutputPluginDir Condition=" '$(SolutionDir)' == '' ">$(MSBuildProjectDirectory)\..\..\OutputPluginDLL</OutputPluginDir>
-        <OutputPluginDir Condition=" '$(SolutionDir)' != '' ">$(SolutionDir)OutputPluginDLL</OutputPluginDir>
-    </PropertyGroup>
-    <Target Name="CopyPluginDllAfterBuild" AfterTargets="Build">
-        <MakeDir Directories="$(OutputPluginDir)" Condition="!Exists('$(OutputPluginDir)')" />
-        <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(OutputPluginDir)" />
-    </Target>
 </Project>

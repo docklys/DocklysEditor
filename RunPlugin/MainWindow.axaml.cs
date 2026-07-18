@@ -574,21 +574,11 @@ public partial class MainWindow : Window
 
     private static string? FindFreshestDll(string projectFolder, string assemblyName)
     {
-        var candidates = new List<string>();
-
-        var root = FindEditorSolutionDirFrom(projectFolder);
-        if (root != null)
-        {
-            var outDir = Path.Combine(root, "OutputPluginDLL");
-            if (Directory.Exists(outDir))
-                candidates.AddRange(Directory.GetFiles(outDir, assemblyName + ".dll", SearchOption.AllDirectories));
-        }
-
         var bin = Path.Combine(projectFolder, "bin");
-        if (Directory.Exists(bin))
-            candidates.AddRange(Directory.GetFiles(bin, assemblyName + ".dll", SearchOption.AllDirectories));
-
-        return candidates.OrderByDescending(File.GetLastWriteTimeUtc).FirstOrDefault();
+        if (!Directory.Exists(bin)) return null;
+        return Directory.GetFiles(bin, assemblyName + ".dll", SearchOption.AllDirectories)
+            .OrderByDescending(File.GetLastWriteTimeUtc)
+            .FirstOrDefault();
     }
 
     private static string? GetPluginsSourceDir()
@@ -651,19 +641,11 @@ public partial class MainWindow : Window
         <Nullable>enable</Nullable>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include=""Avalonia"" Version=""11.3.1"" />
+        <PackageReference Include=""Avalonia"" Version=""11.3.18"" />
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include=""..\..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj"" />
     </ItemGroup>
-    <PropertyGroup>
-        <OutputPluginDir Condition="" '$(SolutionDir)' == '' "">$(MSBuildProjectDirectory)\..\..\OutputPluginDLL</OutputPluginDir>
-        <OutputPluginDir Condition="" '$(SolutionDir)' != '' "">$(SolutionDir)OutputPluginDLL</OutputPluginDir>
-    </PropertyGroup>
-    <Target Name=""CopyPluginDllAfterBuild"" AfterTargets=""Build"">
-        <MakeDir Directories=""$(OutputPluginDir)"" Condition=""!Exists('$(OutputPluginDir)')"" />
-        <Copy SourceFiles=""$(OutputPath)$(AssemblyName).dll"" DestinationFolder=""$(OutputPluginDir)"" />
-    </Target>
 </Project>
 ";
 

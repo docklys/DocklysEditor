@@ -27,7 +27,7 @@
 dotnet build Webview/Webview.csproj
 ```
 
-The build copies the DLL to `../OutputModuleDLL` and, when the target directories exist, also attempts to update Docklys' installed module directories. Use the Module Editor's **Build & install** command for the normal deployment workflow.
+The build leaves the DLL in the standard project output. Use the Module Editor's **Build & install** command for deployment; the project contains no build-time deployment or copy action.
 
 ## Module metadata
 

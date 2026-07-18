@@ -36,7 +36,7 @@ The bundled `Assets/scrcpy-server` must remain version-compatible with `AdbClien
 dotnet build scrcpy/scrcpy.csproj
 ```
 
-The build embeds the server in the DLL and copies the module DLL to `../OutputModuleDLL`. Use **Build & install** in `RunModule` to deploy it to Docklys.
+The build embeds the server in the module's normal build output. Use **Build & install** in `RunModule` to deploy it to Docklys; the project contains no custom MSBuild deployment target.
 
 ## Module metadata
 

@@ -22,13 +22,4 @@
     <ItemGroup>
       <ProjectReference Include="..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj" />
     </ItemGroup>
-    <PropertyGroup>
-      <!-- Determine output directory for built module DLLs. Use SolutionDir when available, otherwise fall back to repository root parent. -->
-      <OutputModuleDir Condition=" '$(SolutionDir)' == '' ">$(MSBuildProjectDirectory)\..\OutputModuleDLL</OutputModuleDir>
-      <OutputModuleDir Condition=" '$(SolutionDir)' != '' ">$(SolutionDir)OutputModuleDLL</OutputModuleDir>
-    </PropertyGroup>
-    <Target Name="CopyDllAfterBuild" AfterTargets="Build">
-      <MakeDir Directories="$(OutputModuleDir)" Condition="!Exists('$(OutputModuleDir)')" />
-      <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(OutputModuleDir)" />
-    </Target>
 </Project>

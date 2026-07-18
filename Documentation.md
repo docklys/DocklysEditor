@@ -86,7 +86,7 @@ Every module folder must include `docklys.manifest.json`. This is the security d
 - Do not request storage or any future capability “just in case.” Start with the least privilege the module needs and add a capability only when the implementation requires it.
 - Use **Project → Permissions** in `RunModule` to edit the manifest version, standard storage permissions, and additional capability names. The editor calculates `security_tier` from the selected capabilities; developers do not set it manually. The New Module dialog preselects storage access so a settings-capable template is safe by default; remove it for a truly stateless module.
 
-The editor copies the active module's manifest into `OutputModuleDLL` with its package metadata. A deployment format that stores modules separately must keep each manifest with its corresponding module, never substitute another module's manifest.
+The approval collector reads the standard Release build output. Keep the manifest beside the module source and package it with the corresponding module artifact; never substitute another module's manifest. Do not add a custom MSBuild target to copy or deploy the DLL—host tooling owns collection and installation.
 
 ---
 
@@ -419,3 +419,5 @@ dotnet build <module-project>.csproj
 ```
 
 An empty vulnerability report is necessary but not sufficient: also document the package's purpose, licensing, desktop support, transitive/native assets, and fallback. Do not put review-system procedures, credentials, tokens, or private deployment data in module documentation or approval evidence.
+
+Module project files must remain declarative. Do not use custom MSBuild `Target` blocks, `Exec` tasks, or build-time copy/deployment actions; these are rejected because they can execute arbitrary build-time behavior. Build normally and let the collector use the standard Release output.

@@ -28,7 +28,7 @@
 dotnet build spotify/spotify.csproj
 ```
 
-The project copies its DLL to `../OutputModuleDLL` and conditionally attempts to update the installed Docklys modules directory. Use **Build & install** in `RunModule` for normal deployment.
+The build leaves the DLL in the standard project output. Use **Build & install** in `RunModule` for deployment; the project contains no build-time deployment or copy action.
 
 ## Module metadata
 

@@ -18,6 +18,8 @@ AI coding assistants working in this repository must read [Documentation.md](Doc
 
 Every module has a `docklys.manifest.json` beside its project. It declares the module identity, version, security tier, and only the capabilities the module needs. `ui.render` is always required. A module that reads or writes its own per-instance settings must request `storage.module.read` and `storage.module.write` at `security_tier` 1. Use **Project → Permissions** in the editor to review or change these fields; the New Module dialog starts with module-storage permissions selected as a useful template foundation.
 
+Keep module project files declarative: custom MSBuild targets, `Exec` tasks, and build-time copy/deployment actions are forbidden. Docklys collects normal Release output and host tooling performs deployment.
+
 Modules should work on Windows, macOS, and Linux from the beginning. Use Avalonia and .NET cross-platform APIs first, keep native code behind operating-system checks, and provide a safe fallback when a native integration is unavailable. Before shipping, build and test the module on all three desktop operating systems; the detailed checklist is in [Documentation.md](Documentation.md#cross-platform-first-development).
 
 ## Documentation Map

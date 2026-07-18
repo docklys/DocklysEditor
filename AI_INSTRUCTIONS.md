@@ -28,6 +28,7 @@ If documents conflict, stop and report the conflict. Do not silently choose the 
 - Persist only module-owned data under `ModuleSaves/<ModuleName>/<UniqueModuleId>.json`. Treat all loaded JSON and external input as untrusted; handle malformed data without crashing the module.
 - Never log secrets, tokens, cookies, full private paths, or user content. Never commit credentials, generated secrets, or local configuration.
 - Do not weaken signature verification, module loading policy, navigation allowlists, sandboxing, or dependency checks to make a feature work.
+- Do not add custom MSBuild targets, `Exec` tasks, or build-time copy/deployment steps to a module project. The collector uses standard Release build output.
 
 ## Cross-platform rules
 

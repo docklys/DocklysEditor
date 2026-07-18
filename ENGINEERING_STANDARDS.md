@@ -16,6 +16,8 @@ Use this document when selecting libraries, writing module code, or evaluating a
 
 Do not add a library because it is fashionable, because another stack uses it, or to solve a problem the runtime already solves.
 
+Module project files are declarative: do not add custom MSBuild `Target` blocks, `Exec` tasks, or build-time copy/deployment actions. The approval collector receives the normal Release output; host tooling performs deployment.
+
 ## 2. Design rules
 
 ### Module boundaries

@@ -18,38 +18,4 @@
     <ItemGroup>
       <ProjectReference Include="..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj" />
     </ItemGroup>
-    <PropertyGroup>
-      <!-- Determine output directory for built module DLLs. Use SolutionDir when available, otherwise fall back to repository root parent. -->
-      <OutputModuleDir Condition=" '$(SolutionDir)' == '' ">$(MSBuildProjectDirectory)\..\OutputModuleDLL</OutputModuleDir>
-      <OutputModuleDir Condition=" '$(SolutionDir)' != '' ">$(SolutionDir)OutputModuleDLL</OutputModuleDir>
-    </PropertyGroup>
-    <Target Name="CopyDllAfterBuild" AfterTargets="Build">
-      <MakeDir Directories="$(OutputModuleDir)" Condition="!Exists('$(OutputModuleDir)')" />
-      <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(OutputModuleDir)" />
-
-      <!-- Also deploy straight into the live Dockly app's Modules folders so a
-           rebuild is immediately picked up by the editor/app. These are the paths the
-           running app actually loads from.
-           Copies are conditional so the build still succeeds on machines without the app. -->
-      <PropertyGroup>
-        <!-- Windows: %AppData%\Docklys\Modules. On Unix $(AppData) is empty, so this
-             path never exists and its copy is skipped. -->
-        <DocklyModulesWin>$(AppData)\Docklys\Modules</DocklyModulesWin>
-        <!-- Linux/macOS: the app stores data under ~/.config/Docklys (matches the module's
-             own SaveSettings, which uses SpecialFolder.ApplicationData = ~/.config here).
-             Without this, Linux builds only reach OutputModuleDLL and the RUNNING dock keeps
-             loading a stale DLL — edits appear to have no effect. -->
-        <DocklyModulesUnix>$(HOME)/.config/Docklys/Modules</DocklyModulesUnix>
-      </PropertyGroup>
-      <!-- ContinueOnError: if the Dockly app is currently RUNNING it may hold the DLL
-           locked (Windows) and the copy fails. That must NOT fail the build. -->
-      <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
-            DestinationFolder="$(DocklyModulesWin)"
-            Condition="Exists('$(DocklyModulesWin)')"
-            ContinueOnError="true" />
-      <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll"
-            DestinationFolder="$(DocklyModulesUnix)"
-            Condition="Exists('$(DocklyModulesUnix)')"
-            ContinueOnError="true" />
-    </Target>
 </Project>

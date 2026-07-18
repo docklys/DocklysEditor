@@ -435,30 +435,15 @@ public partial class MainWindow : Window
 
             var projDir = Path.GetDirectoryName(proj) ?? "";
 
-            // Find the freshest <Folder>.dll under OutputModuleDLL (preferred) or bin\Debug
+            // The approval collector reads standard project build output. Never use a
+            // project-defined MSBuild copy target or a shared output drop as a deployment source.
             string? builtDll = null;
-            var editorRoot = FindEditorSolutionDir();
-            if (editorRoot != null)
+            var binDir = Path.Combine(projDir, "bin");
+            if (Directory.Exists(binDir))
             {
-                var outputDir = Path.Combine(editorRoot, "OutputModuleDLL");
-                if (Directory.Exists(outputDir))
-                {
-                    builtDll = Directory.GetFiles(outputDir, assemblyName + ".dll", SearchOption.AllDirectories)
-                                        .OrderByDescending(File.GetLastWriteTimeUtc)
-                                        .FirstOrDefault();
-                }
-            }
-            
-            // Fallback to project's bin directory if not in OutputModuleDLL
-            if (builtDll == null)
-            {
-                var binDir = Path.Combine(projDir, "bin", "Debug");
-                if (Directory.Exists(binDir))
-                {
-                    builtDll = Directory.GetFiles(binDir, assemblyName + ".dll", SearchOption.AllDirectories)
-                                        .OrderByDescending(File.GetLastWriteTimeUtc)
-                                        .FirstOrDefault();
-                }
+                builtDll = Directory.GetFiles(binDir, assemblyName + ".dll", SearchOption.AllDirectories)
+                                    .OrderByDescending(File.GetLastWriteTimeUtc)
+                                    .FirstOrDefault();
             }
 
             if (builtDll == null || !File.Exists(builtDll))

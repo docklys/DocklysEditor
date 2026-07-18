@@ -10,5 +10,6 @@ For module publication, package changes, native helpers, or approval failures, a
 - Preserve per-instance state isolation and use only module-scoped storage.
 - Design, build, and validate Windows, macOS, and Linux behavior from the start; guard native code and provide safe fallbacks.
 - Prefer existing project conventions and cross-platform .NET/Avalonia APIs. Add a dependency only with a documented need, cross-platform support, pinned version, and advisory review.
+- Keep module project files declarative: do not add custom MSBuild targets, `Exec` tasks, or build-time copy/deployment actions.
 - Build and test the affected project before completion. Report validation and any untested platform explicitly.
 - Never weaken security checks, expose credentials, delete user data, or overwrite unrelated work without explicit authorization.

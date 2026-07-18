@@ -10,12 +10,4 @@
     <ItemGroup>
         <ProjectReference Include="..\..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj" />
     </ItemGroup>
-    <PropertyGroup>
-        <OutputPatternDir Condition=" '$(SolutionDir)' == '' ">$(MSBuildProjectDirectory)\..\..\OutputPatternDLL</OutputPatternDir>
-        <OutputPatternDir Condition=" '$(SolutionDir)' != '' ">$(SolutionDir)OutputPatternDLL</OutputPatternDir>
-    </PropertyGroup>
-    <Target Name="CopyPatternDllAfterBuild" AfterTargets="Build">
-        <MakeDir Directories="$(OutputPatternDir)" Condition="!Exists('$(OutputPatternDir)')" />
-        <Copy SourceFiles="$(OutputPath)$(AssemblyName).dll" DestinationFolder="$(OutputPatternDir)" />
-    </Target>
 </Project>
