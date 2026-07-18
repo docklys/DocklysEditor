@@ -35,6 +35,7 @@ The following is the reviewed package baseline for the current Avalonia 11.3 rel
 | `NAudio` | `2.2.1` | `VolumeMixer` Windows audio backend only; runtime guarded | Pass — same audit. |
 | `Newtonsoft.Json` | `13.0.3` | `VolumeMixer` legacy JSON parsing only | Pass — same audit. |
 | `System.Drawing.Common` | `7.0.0` | `VolumeMixer` Windows icon conversion only; never execute its path on Linux or macOS | Pass — same audit. |
+| `Microsoft.NET.Test.Sdk`, `xunit`, `xunit.runner.visualstudio` | `17.11.1`, `2.9.2`, `2.8.2` | Automated test projects only; `scrcpy/tests/Scrcpy.Tests` uses these exact versions for its non-UI type smoke test | Pass — no vulnerable packages reported by the transitive audit on 2026-07-18. |
 
 The verdict is evidence at a point in time, not a permanent safety claim. Re-run the audit after changing a package, restoring against a different feed, or preparing a release. `Directory.Build.props` makes advisories at low severity or above build-stopping warnings across this repository.
 
