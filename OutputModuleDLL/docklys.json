@@ -1,9 +1,9 @@
 {
-  "name": "scrcpy",
+  "name": "VolumeMixer",
   "type": "module",
-  "license": "MIT",
-  "description": "A Docklys module: scrcpy",
+  "license": "None",
+  "description": "",
   "version": "1.0",
-  "sizeBytes": 28160,
-  "githubRepo": "dcqwqc/Docklys.scrcpy"
+  "sizeBytes": 62464,
+  "githubRepo": ""
 }
