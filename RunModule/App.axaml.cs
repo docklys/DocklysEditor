@@ -1,7 +1,11 @@
 using System;
+using System.IO;
+using System.Linq;
+using System.Runtime.Loader;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Dockly.Services.DeviceMirroring;
 
 namespace RunModule;
 
@@ -35,6 +39,11 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
+        // RunModule is a development host. Register the exact same reviewed
+        // integration boundary as Dockly so privileged features preview normally.
+        EnsureSharedContractsLoaded();
+        DeviceMirroringHostRegistration.Configure();
+
 #if LINUX
         // Before the first module webview is constructed, so none can slip through unhooked.
         WebViewNavigationHost.Install();
@@ -46,5 +55,19 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static void EnsureSharedContractsLoaded()
+    {
+        const string contractsAssemblyName = "Docklys.ModuleContracts";
+        if (AssemblyLoadContext.Default.Assemblies.Any(assembly =>
+                string.Equals(assembly.GetName().Name, contractsAssemblyName, StringComparison.Ordinal)))
+            return;
+
+        var contractsPath = Path.Combine(AppContext.BaseDirectory, contractsAssemblyName + ".dll");
+        if (!File.Exists(contractsPath))
+            throw new FileNotFoundException("RunModule requires its shared module contracts assembly.", contractsPath);
+
+        AssemblyLoadContext.Default.LoadFromAssemblyPath(contractsPath);
     }
 }
