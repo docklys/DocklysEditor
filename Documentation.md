@@ -21,6 +21,7 @@ For a terse, machine-grade reference, see [`AIArchitecture.md`](./AIArchitecture
 11. [Browser and WebView Modules](#11-browser-and-webview-modules)
 12. [Common Pitfalls](#12-common-pitfalls)
 13. [AI and cross-platform development](#13-ai-and-cross-platform-development)
+14. [Module approval and dependency evidence](#14-module-approval-and-dependency-evidence)
 
 ---
 
@@ -403,3 +404,18 @@ Treat Windows, macOS, and Linux as the default support target for every new modu
 5. Build the changed project on Windows, macOS, and Linux before release. At minimum run `dotnet build <path-to-project.csproj>` in each environment and manually verify module creation, rendering, theme resources, persistence, and the unavailable-feature fallback.
 
 Do not claim cross-platform support based solely on a Linux or Windows build. Record any deliberate platform limitation in the module README and `SupportedPlatforms`, while retaining safe construction and UI behavior on the other desktop systems.
+
+---
+
+## 14. Module approval and dependency evidence
+
+Before publishing, use [MODULE_APPROVAL.md](MODULE_APPROVAL.md) as the public-safe approval checklist. It records the explicit third-party NuGet allowlist—including the pinned `Avalonia` and `Avalonia.Desktop` versions—and the required vulnerability verdict process.
+
+For every package change, run:
+
+```sh
+dotnet list <module-project>.csproj package --vulnerable --include-transitive
+dotnet build <module-project>.csproj
+```
+
+An empty vulnerability report is necessary but not sufficient: also document the package's purpose, licensing, desktop support, transitive/native assets, and fallback. Do not put review-system procedures, credentials, tokens, or private deployment data in module documentation or approval evidence.

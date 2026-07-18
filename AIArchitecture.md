@@ -101,6 +101,7 @@ Every module source folder carries `docklys.manifest.json`:
 - Request the minimum capability set. Do not add permissions for planned work, broad filesystem access, or convenience.
 - `RunModule` exposes the active manifest through **Project → Permissions**. The creation dialog starts with module-scoped storage permissions selected; the editor derives the tier from the selected capabilities and writes both to the cloned module's manifest. Developers do not set the tier manually.
 - `SECURITY.md` defines the manifest invariants and trust-boundary checks. `ENGINEERING_STANDARDS.md` defines preferred libraries and the portability/verification standard; these are part of the module architecture, not optional contributor notes.
+- `MODULE_APPROVAL.md` defines public-safe publication evidence and the explicit third-party package allowlist. It is required when a module changes packages, uses native helpers, or needs approval remediation.
 
 ---
 

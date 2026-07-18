@@ -82,6 +82,7 @@ Do not present a tier picker, hand-edit a tier, or retain an old higher tier aft
 5. Remove unused packages and never suppress a vulnerability warning without a documented risk decision and mitigation.
 
 See [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) for preferred libraries and usage boundaries.
+For the publication evidence, explicit package allowlist, and current vulnerability-verdict process, see [MODULE_APPROVAL.md](MODULE_APPROVAL.md). That guide intentionally contains only public-safe foundations, never private approval mechanics or credentials.
 
 ## 6. Security review checklist
 

@@ -43,3 +43,9 @@ The build embeds the server in the DLL and copies the module DLL to `../OutputMo
 The module supports Windows, Linux, and macOS and prefers a 3 × 5 tile. It implements `IResizable`, although its current `SetTileSize` implementation does not persist a resized layout.
 
 For shared module conventions, see the repository [README](../README.md).
+
+## Approval evidence
+
+`scrcpy` uses the pinned `Avalonia` and `Avalonia.Desktop` packages defined in the repository [module approval allowlist](../MODULE_APPROVAL.md). Before publishing, run the transitive package audit and build command from that guide.
+
+The module communicates only with a user-authorized Android device through a locally available ADB installation and loopback socket. It validates tool availability before starting and presents a status message when ADB, `ffmpeg`, or the device connection is unavailable. No credentials, private-device data, or approval-system details belong in submission evidence.

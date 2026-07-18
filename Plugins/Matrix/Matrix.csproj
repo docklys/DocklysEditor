@@ -7,7 +7,7 @@
         <RootNamespace>DocklysPlugins.Matrix</RootNamespace>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="Avalonia" Version="11.3.1" />
+        <PackageReference Include="Avalonia" Version="11.3.18" />
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\..\Docklys.ModuleContracts\Docklys.ModuleContracts.csproj" />

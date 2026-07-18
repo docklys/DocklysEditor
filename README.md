@@ -27,6 +27,7 @@ Modules should work on Windows, macOS, and Linux from the beginning. Use Avaloni
 - [SECURITY.md](SECURITY.md) — manifest invariants, automatic tier calculation, trust boundaries, dependency review, and security release checks.
 - [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) — preferred .NET/Avalonia libraries, error handling, portability, and verification standards.
 - [AI_INSTRUCTIONS.md](AI_INSTRUCTIONS.md) — the mandatory workflow for AI coding tools.
+- [MODULE_APPROVAL.md](MODULE_APPROVAL.md) — public-safe module publication checklist, package allowlist, and vulnerability-verdict requirements.
 
 ## Editor Interface & Features
 

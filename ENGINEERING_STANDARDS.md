@@ -72,3 +72,5 @@ Every newly added external package should have a short note in the pull request 
 - Fallback behavior if the package/native component is unavailable.
 
 This prevents dependency accumulation and makes security review repeatable.
+
+The authoritative package allowlist and vulnerability-verdict evidence are maintained in [MODULE_APPROVAL.md](MODULE_APPROVAL.md). Do not treat a package as approved merely because another project currently references it.

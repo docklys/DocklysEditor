@@ -7,6 +7,7 @@ This is the shared policy source for AI coding tools. Before proposing or making
 3. [AIArchitecture.md](AIArchitecture.md) — host/editor architecture and lifecycle constraints.
 4. [SECURITY.md](SECURITY.md) — threat model, manifest policy, data handling, and release checks.
 5. [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) — approved defaults for dependencies, quality, and portability.
+6. [MODULE_APPROVAL.md](MODULE_APPROVAL.md) — publication evidence, package allowlist, and safe approval guidance; required for module publication, package changes, native helpers, and approval failures.
 
 If documents conflict, stop and report the conflict. Do not silently choose the less secure or less portable interpretation.
 
@@ -44,6 +45,7 @@ Before declaring a change complete:
 - Verify every edited JSON file parses and every manifest has a calculated tier consistent with its capabilities.
 - Check for regressions in state isolation, theme resources, dependency loading, and platform fallbacks.
 - For new dependencies, document why the built-in option is insufficient, review support on all desktop targets, pin a compatible version, and check the advisory state.
+- For module publication, package changes, native helpers, or approval failures, follow `MODULE_APPROVAL.md`; never add a package outside its allowlist without a documented review and fresh vulnerability verdict.
 - Update the relevant README, `Documentation.md`, `AIArchitecture.md`, `SECURITY.md`, or `ENGINEERING_STANDARDS.md` whenever behavior, security, or contributor workflow changes.
 
 ## Communication requirements

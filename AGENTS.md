@@ -2,6 +2,8 @@
 
 Read [AI_INSTRUCTIONS.md](AI_INSTRUCTIONS.md) before any change. Then read [Documentation.md](Documentation.md), [AIArchitecture.md](AIArchitecture.md), [SECURITY.md](SECURITY.md), and [ENGINEERING_STANDARDS.md](ENGINEERING_STANDARDS.md) relevant to the task.
 
+For module publication, package changes, native helpers, or approval failures, also read [MODULE_APPROVAL.md](MODULE_APPROVAL.md).
+
 ## Required behavior
 
 - Keep every module manifest least-privilege; security tier is calculated from capabilities, never selected manually.
