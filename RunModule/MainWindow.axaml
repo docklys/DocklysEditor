@@ -46,6 +46,8 @@
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                     <Button Name="GitHubButton" Classes="command" Content="GitHub repository" Click="OnGitHubClick" ToolTip.Tip="Create or update the module's GitHub repository"/>
+                    <Button Name="GitHubPullButton" Classes="command" Content="Pull" Click="OnGitHubPullClick" ToolTip.Tip="Safely fast-forward the selected module from GitHub" IsVisible="False"/>
+                    <TextBlock Name="GitHubAheadNotice" Foreground="#F0C36A" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="210" IsVisible="False"/>
                     <Button Name="NewButton" Classes="command" Click="CreateModule_Click" ToolTip.Tip="Create a module"><StackPanel Orientation="Horizontal" Spacing="6"><ic:FluentIcon Icon="Add" IconVariant="Regular" FontSize="16" Foreground="White"/><TextBlock Text="New module"/></StackPanel></Button>
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <TextBlock Text="Zoom" Foreground="#AAB2BB" FontSize="11" VerticalAlignment="Center"/>

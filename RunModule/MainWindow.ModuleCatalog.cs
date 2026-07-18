@@ -184,6 +184,7 @@ public partial class MainWindow
             if (renameBtn != null) renameBtn.IsEnabled = true;
 
             RefreshMetaForCurrentModule();
+            _ = RefreshGitHubSyncStatusAsync();
 
             // Dual-view: show a second independent instance in slot2.
             // Both instances come from the same isolated ALC, so they share

@@ -39,6 +39,103 @@ public partial class MainWindow
         if (spec == null) return;
 
         await RunGitHubFlow(folder, spec, isUpdate);
+        await RefreshGitHubSyncStatusAsync();
+    }
+
+    private async void OnGitHubPullClick(object? sender, RoutedEventArgs e)
+    {
+        if (!TryGetCurrentModuleFolder(out var folder, out var moduleName)) return;
+
+        var (statusOk, status) = await RunProcessAsync("git", "status --porcelain", folder);
+        if (!statusOk)
+        {
+            await ShowMessageDialog("GitHub pull", status);
+            return;
+        }
+        if (!string.IsNullOrWhiteSpace(status))
+        {
+            await ShowMessageDialog("GitHub pull blocked",
+                "Commit, stash, or discard local changes before pulling. Docklys will not overwrite your work.");
+            return;
+        }
+
+        SetGitHubSyncUi("Pulling from GitHub…", showPull: false);
+        var (ok, log) = await RunProcessAsync("git", "pull --ff-only", folder);
+        if (!ok)
+        {
+            await RefreshGitHubSyncStatusAsync();
+            await ShowMessageDialog("GitHub pull blocked",
+                "The remote cannot be applied as a fast-forward. Resolve the branch divergence in Git, then try again.\n\n" + log);
+            return;
+        }
+
+        await RefreshGitHubSyncStatusAsync();
+        await ShowMessageDialog("GitHub pull complete",
+            $"{moduleName} is up to date. Rebuild the module before reloading its preview if source files changed.");
+    }
+
+    private async Task RefreshGitHubSyncStatusAsync()
+    {
+        SetGitHubSyncUi(null, showPull: false);
+        if (!TryGetCurrentModuleFolder(out var folder, out _)) return;
+
+        var (remoteOk, remote) = await RunProcessAsync("git", "remote get-url origin", folder);
+        if (!remoteOk || !remote.Contains("github.com", StringComparison.OrdinalIgnoreCase)) return;
+
+        var (fetchOk, _) = await RunProcessAsync("git", "fetch --quiet --prune", folder);
+        if (!fetchOk) return; // Offline and credential failures should not distract from editing.
+
+        var (upstreamOk, upstream) = await RunProcessAsync(
+            "git", "rev-parse --abbrev-ref --symbolic-full-name @{upstream}", folder);
+        if (!upstreamOk || string.IsNullOrWhiteSpace(upstream)) return;
+
+        // With <upstream> on the left and HEAD on the right, the first count is
+        // commits available remotely and the second is commits only on this machine.
+        var (countOk, counts) = await RunProcessAsync(
+            "git", "rev-list --left-right --count @{upstream}...HEAD", folder);
+        if (!countOk) return;
+        var parts = counts.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2
+            || !int.TryParse(parts[0], out var remoteAhead)
+            || !int.TryParse(parts[1], out var localAhead)) return;
+
+        if (remoteAhead <= 0) return;
+        if (localAhead > 0)
+        {
+            SetGitHubSyncUi($"GitHub is ahead by {remoteAhead}; local has {localAhead} outgoing — resolve divergence first.", showPull: false);
+            return;
+        }
+
+        SetGitHubSyncUi($"GitHub is ahead by {remoteAhead} commit{(remoteAhead == 1 ? "" : "s")}", showPull: true, pullText: $"Pull ({remoteAhead})");
+    }
+
+    private bool TryGetCurrentModuleFolder(out string folder, out string moduleName)
+    {
+        folder = string.Empty;
+        moduleName = string.Empty;
+        if (_catalog.Count == 0) return false;
+        var entry = _catalog[Math.Clamp(_currentIndex, 0, _catalog.Count - 1)];
+        folder = Path.GetDirectoryName(entry.CsprojPath) ?? string.Empty;
+        moduleName = entry.FolderName;
+        return Directory.Exists(folder);
+    }
+
+    private void SetGitHubSyncUi(string? notice, bool showPull, string? pullText = null)
+    {
+        var text = this.FindControl<TextBlock>("GitHubAheadNotice");
+        if (text != null)
+        {
+            text.Text = notice ?? string.Empty;
+            text.IsVisible = !string.IsNullOrWhiteSpace(notice);
+        }
+
+        var pull = this.FindControl<Button>("GitHubPullButton");
+        if (pull != null)
+        {
+            pull.Content = pullText ?? "Pull";
+            pull.IsVisible = showPull;
+            pull.IsEnabled = showPull;
+        }
     }
 
     private async Task RunGitHubFlow(string folder, GitHubSpec spec, bool isUpdate)
